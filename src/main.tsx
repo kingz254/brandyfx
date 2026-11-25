@@ -65,7 +65,7 @@ function Mark() {
 
 function Ribbon({ markets }: { markets: Market[] }) {
   return <div className="ribbon"><span className="ribbon-label">{preview ? 'Sample prices' : 'Market prices'}</span>
-    <div className="ribbon-items">{markets.length ? markets.map(market => <span key={market.symbol}>
+    <div className="ribbon-items" role="region" aria-label={preview ? 'Sample market quotes' : 'Live market quotes'} tabIndex={markets.length ? 0 : undefined}>{markets.length ? markets.map(market => <span key={market.symbol}>
       {name(market)} <strong key={market.quote}>{market.quote || '–'}</strong>{!market.live && <small>Stale</small>}
     </span>) : <span>Waiting for market data</span>}</div>
   </div>;
@@ -134,8 +134,9 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
   const signal = live ? feed.find(item => +new Date(item.expires) > clock) : undefined;
   return <main className="desk">
     <aside className="rail" aria-label="Markets"><h2>Markets</h2>
-      {markets.map(item => <button key={item.symbol} aria-pressed={item.symbol === market?.symbol} onClick={() => select(item.symbol)}>
-        {name(item)} <span>{item.symbol}</span>
+      {markets.map(item => <button key={item.symbol} title={item.symbol} aria-pressed={item.symbol === market?.symbol} onClick={() => select(item.symbol)}>
+        <span className="market-glyph" aria-hidden="true">{item.symbol.match(/\d+/)?.[0] ?? '∿'}</span>
+        <span className="market-name">{name(item)}</span>
       </button>)}
       {!markets.length && <p>Waiting for markets.</p>}
     </aside>
@@ -144,20 +145,24 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
         <span className={live ? 'status live' : 'status'}>{preview ? 'Sample feed' : live ? 'Feed live' : 'Reconnecting'}</span></div>
       <div className="tabs" aria-label="Signal family">{families.map(([id, label]) => <button key={id}
         aria-pressed={family === id} onClick={() => setFamily(id)}>{label}</button>)}</div>
-      <div className="active" aria-live="polite" key={signal?.id ?? family}>
-        <div><p>Current signal</p><h2>{signal ? signal.label : live ? 'Watching for a setup' : 'Waiting for fresh ticks'}</h2></div>
-        {signal && <div className="signal-time"><strong aria-hidden="true">{signal.digit ?? (signal.label === 'Rise' ? '↑' : '↓')}</strong><small>Expires {stamp(signal.expires)}</small></div>}
-      </div>
-      <div className="chart-panel"><div><h2>Price movement</h2><strong key={market?.quote}>{market?.quote || '–'}</strong></div>
-        <Chart points={market?.points || []} />
-        <div className="chart-caption"><span>Recent ticks</span><span>{market?.updated ? stamp(market.updated) : 'Waiting for data'}</span></div>
+      <div className="desk-panels">
+        <div className="active" aria-live="polite">
+          <div className="signal-content" key={signal?.id ?? family}>
+            <div><p>Current signal</p><h2>{signal ? signal.label : live ? 'Watching for a setup' : 'Waiting for fresh ticks'}</h2></div>
+            {signal && <div className="signal-time"><strong aria-hidden="true">{signal.digit ?? (signal.label === 'Rise' ? '↑' : '↓')}</strong><small>Expires {stamp(signal.expires)}</small></div>}
+          </div>
+        </div>
+        <div className="chart-panel"><div><h2>Price movement</h2><strong key={market?.quote}>{market?.quote || '–'}</strong></div>
+          <Chart points={market?.points || []} />
+          <div className="chart-caption"><span>Recent ticks</span><span>{market?.updated ? stamp(market.updated) : 'Waiting for data'}</span></div>
+        </div>
+        <aside className="history"><h2>Signal history</h2>
+          {feed.length ? <ol>{feed.map(item => <li key={item.id}><span>{item.label}{item.digit !== null && item.family === 'digit' ? ' ' + item.digit : ''}
+            <small>{stamp(item.issued)}</small></span><span className="history-state">{+new Date(item.expires) <= clock ? 'Expired' : 'Open'}</span></li>)}</ol>
+            : <p>Signals for this market and family will appear here.</p>}
+        </aside>
       </div>
     </section>
-    <aside className="history"><h2>Signal history</h2>
-      {feed.length ? <ol>{feed.map(item => <li key={item.id}><span>{item.label}{item.digit !== null && item.family === 'digit' ? ' ' + item.digit : ''}
-        <small>{stamp(item.issued)}</small></span><span className="history-state">{+new Date(item.expires) <= clock ? 'Expired' : 'Open'}</span></li>)}</ol>
-        : <p>Signals for this market and family will appear here.</p>}
-    </aside>
   </main>;
 }
 
