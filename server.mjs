@@ -1,0 +1,250 @@
+import { createServer } from 'node:http';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { connect } from './db.mjs';
+import { VERSION } from './strategy.mjs';
+
+const dev = process.argv.includes('--dev');
+const origin = new URL(process.env.APP_ORIGIN || 'http://127.0.0.1:5173');
+if (origin.pathname !== '/' || origin.search || origin.hash || (!dev && origin.protocol !== 'https:')) {
+  throw new Error('APP_ORIGIN must be a bare origin with HTTPS in production');
+}
+const db = process.env.DATABASE_URL ? connect() : null;
+db?.on('error', error => console.error('Database connection interrupted', error.code));
+if (!dev && (!db || !process.env.DERIV_CLIENT_ID)) throw new Error('DATABASE_URL and DERIV_CLIENT_ID are required');
+const adminIds = new Set((process.env.ADMIN_DERIV_ACCOUNTS || '').split(',').map(id => id.trim()).filter(Boolean));
+const approved = process.env.APPROVED_RULE_VERSION === VERSION;
+const redirectUri = new URL('/api/deriv/callback', origin).href;
+const random = () => randomBytes(32).toString('base64url');
+const hash = value => createHash('sha256').update(value).digest('base64url');
+const cookie = (name, value, age) => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${origin.protocol === 'https:' ? '; Secure' : ''}`;
+const readCookie = (req, name) => (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(name + '='))?.slice(name.length + 1);
+const key = (req, name) => hash(readCookie(req, name) || '');
+const json = (res, code, value) => res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(value));
+const redirect = (res, location, cookies = []) => res.writeHead(303, { Location: location, 'Set-Cookie': cookies }).end();
+const error = (status, message) => Object.assign(new Error(message), { status });
+const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
+const rows = async (sql, params = []) => (await db.query(sql, params)).rows;
+const offer = () => one('SELECT amount,currency,days,instructions FROM offer');
+const markets = () => rows(`SELECT symbol,name,quote,points,updated,
+  ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
+const memberState = id => one(`SELECT s.account_id,s.accounts,s.expires,
+  (SELECT max(expires) FROM payments WHERE account_id=s.account_id AND status='approved'
+    AND revoked_at IS NULL AND expires>now()) AS pass_until
+  FROM sessions s WHERE s.id=$1 AND s.expires>now()`, [id]);
+
+async function body(req) {
+  if (!req.headers['content-type']?.startsWith('application/json')) throw error(415, 'Expected JSON.');
+  let content = '';
+  for await (const chunk of req) {
+    content += chunk;
+    if (content.length > 8192) throw error(413, 'Request too large.');
+  }
+  try {
+    const data = JSON.parse(content);
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw Error();
+    return data;
+  } catch {
+    throw error(400, 'Invalid request.');
+  }
+}
+
+async function oauth(req, res, url) {
+  const clientId = process.env.DERIV_CLIENT_ID;
+  if (!clientId) return redirect(res, '/?login=setup');
+  if (url.pathname.endsWith('/start')) {
+    const id = random();
+    const state = random();
+    const verifier = random();
+    await db.query('DELETE FROM oauth_attempts WHERE expires<=now()');
+    await db.query(`INSERT INTO oauth_attempts VALUES($1,$2,$3,now()+interval '5 minutes')`, [hash(id), state, verifier]);
+    const auth = new URL('https://auth.deriv.com/oauth2/auth');
+    auth.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri,
+      response_type: 'code', scope: 'trade', state, code_challenge: hash(verifier), code_challenge_method: 'S256' });
+    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300)]);
+  }
+  const clear = [cookie('bfx_oauth', '', 0)];
+  const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier', [key(req, 'bfx_oauth')]);
+  if (!attempt || attempt.state !== url.searchParams.get('state')) return redirect(res, '/?login=invalid', clear);
+  if (url.searchParams.has('error') || !url.searchParams.get('code')) return redirect(res, '/?login=denied', clear);
+  try {
+    const token = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', signal: AbortSignal.timeout(12000),
+      body: new URLSearchParams({ grant_type: 'authorization_code', code: url.searchParams.get('code'),
+        redirect_uri: redirectUri, client_id: clientId, code_verifier: attempt.verifier }) });
+    if (!token.ok) return redirect(res, '/?login=failed', clear);
+    const { access_token, expires_in } = await token.json();
+    if (typeof access_token !== 'string' || !Number.isFinite(expires_in) || expires_in < 1) return redirect(res, '/?login=failed', clear);
+    const lookup = await fetch('https://api.derivws.com/trading/v1/options/accounts', { signal: AbortSignal.timeout(12000),
+      headers: { Authorization: 'Bearer ' + access_token, 'Deriv-App-ID': clientId } });
+    if (!lookup.ok) return redirect(res, '/?login=failed', clear);
+    const { data } = await lookup.json();
+    const accounts = [...new Set((Array.isArray(data) ? data : [])
+      .filter(item => item.status === 'active' && typeof item.account_id === 'string' && item.account_id.length <= 80)
+      .map(item => item.account_id))];
+    if (!accounts.length) return redirect(res, '/?login=account', clear);
+    const id = random();
+    const seconds = Math.min(Math.floor(expires_in), 86400);
+    await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
+      INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
+    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
+    return redirect(res, '/', [...clear, cookie('bfx_session', id, seconds)]);
+  } catch (cause) {
+    console.error('Deriv sign-in failed', cause.code || cause.name);
+    return redirect(res, '/?login=failed', clear);
+  }
+}
+
+async function live(res, id) {
+  const admin = state => adminIds.has(state?.account_id);
+  const permitted = state => state?.account_id && (admin(state) || (approved && state.pass_until));
+  if (!permitted(await memberState(id))) return json(res, 403, { error: 'An active pass is required.' });
+  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  let previous;
+  try {
+    while (!res.destroyed && !res.writableEnded) {
+      const result = await one(`SELECT
+        CASE WHEN s.account_id=ANY($2::text[]) OR ($3 AND EXISTS(
+          SELECT FROM payments p WHERE p.account_id=s.account_id AND p.status='approved' AND p.revoked_at IS NULL AND p.expires>now()))
+        THEN (SELECT coalesce(json_agg(recent),'[]') FROM
+          (SELECT id,symbol,family,label,digit,issued,expires FROM signals WHERE version=$4 ORDER BY issued DESC,id DESC LIMIT 150) recent)
+        END AS signals FROM sessions s WHERE s.id=$1 AND s.expires>now()`, [id, [...adminIds], approved, VERSION]);
+      if (!result?.signals) {
+        res.end('event: locked\ndata: {}\n\n');
+        break;
+      }
+      const value = JSON.stringify(result.signals);
+      const payload = value === previous ? ': keep-alive\n\n' : 'data: ' + value + '\n\n';
+      if (!res.write(payload)) {
+        res.end();
+        break;
+      }
+      previous = value;
+      await sleep(1500);
+    }
+  } finally {
+    if (!res.writableEnded) res.end();
+  }
+}
+
+async function api(req, res, url) {
+  const path = url.pathname;
+  const method = req.method;
+  if (method === 'POST' && req.headers.origin !== origin.origin) throw error(403, 'Invalid request origin.');
+  if (method === 'GET' && path === '/api/markets') return json(res, 200, db ? await markets() : []);
+  if (method === 'GET' && path === '/api/me' && !db) return json(res, 200, { ready: false });
+  if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
+  if (!db) throw error(503, 'The service is awaiting setup.');
+  if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url);
+  const id = key(req, 'bfx_session');
+  if (method === 'GET' && path === '/api/stream') return live(res, id);
+  const state = await memberState(id);
+  const account = state?.account_id;
+  const admin = adminIds.has(account);
+  if (method === 'GET' && path === '/api/me') {
+    const payment = account ? await one(`SELECT id,status,created,expires,revoked_at FROM payments
+      WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
+    return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, admin,
+      accounts: account ? undefined : state?.accounts, passUntil: state?.pass_until, payment, offer: account ? await offer() : null });
+  }
+  if (method === 'POST' && path === '/api/logout') {
+    await db.query('DELETE FROM sessions WHERE id=$1', [id]);
+    res.setHeader('Set-Cookie', cookie('bfx_session', '', 0));
+    return json(res, 200, {});
+  }
+  if (method === 'POST' && path === '/api/account' && state && !account) {
+    const input = await body(req);
+    if (!state.accounts.includes(input.account)) throw error(400, 'Choose a verified Deriv account.');
+    const next = random();
+    const selected = await one(`UPDATE sessions SET id=$2,account_id=$3 WHERE id=$1 AND expires>now()
+      AND account_id IS NULL RETURNING expires`, [id, hash(next), input.account]);
+    if (!selected) throw error(409, 'Sign in again to select an account.');
+    res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000))));
+    return json(res, 200, {});
+  }
+  if (!account) throw error(401, 'Sign in with Deriv.');
+  if (method === 'POST' && path === '/api/payment') {
+    if (!approved) throw error(409, 'Paid access is awaiting launch.');
+    const { reference } = await body(req);
+    if (typeof reference !== 'string' || !/^[A-Za-z0-9-]{5,80}$/.test(reference.trim())) throw error(400, 'Enter a valid payment reference.');
+    const result = await one(`INSERT INTO payments(account_id,reference,amount,currency,days)
+      SELECT $1,$2,amount,currency,days FROM offer WHERE NOT EXISTS(
+        SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
+      ON CONFLICT DO NOTHING RETURNING id`, [account, reference.trim().toUpperCase()]);
+    if (!result) throw error(409, 'The reference was already submitted, a request is pending, or there is no active offer.');
+    return json(res, 201, result);
+  }
+  if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
+  if (!admin) throw error(403, 'Administrator access required.');
+  if (method === 'GET' && path === '/api/admin/payments') {
+    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,created,expires,revoked_at
+      FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 100`));
+  }
+  if (method === 'POST' && path === '/api/admin/offer') {
+    const { amount, currency, days, instructions } = await body(req);
+    if (typeof amount !== 'string' || !/^\d{1,10}(\.\d{1,2})?$/.test(amount) || Number(amount) <= 0 ||
+      typeof currency !== 'string' || !/^[A-Z]{3}$/.test(currency) || !Number.isInteger(days) || days < 1 || days > 365 ||
+      typeof instructions !== 'string' || !instructions.trim() || instructions.length > 2000) throw error(400, 'Check the fee, currency, duration, and instructions.');
+    await db.query(`INSERT INTO offer VALUES(true,$1,$2,$3,$4)
+      ON CONFLICT(id) DO UPDATE SET amount=$1,currency=$2,days=$3,instructions=$4`, [amount, currency, days, instructions.trim()]);
+    return json(res, 200, {});
+  }
+  if (method === 'POST' && path === '/api/admin/payment') {
+    const { paymentId, action, days } = await body(req);
+    if (typeof paymentId !== 'string' || !/^\d{1,18}$/.test(paymentId)) throw error(400, 'Invalid payment.');
+    const operations = {
+      approve: "SET status='approved',reviewed_by=$2,reviewed_at=now(),expires=now()+days*interval '1 day' WHERE id=$1 AND status='pending'",
+      decline: "SET status='declined',reviewed_by=$2,reviewed_at=now() WHERE id=$1 AND status='pending'",
+      revoke: "SET revoked_at=now() WHERE id=$1 AND status='approved' AND revoked_at IS NULL AND $2::text IS NOT NULL",
+      extend: "SET expires=greatest(expires,now())+$3*interval '1 day' WHERE id=$1 AND status='approved' AND revoked_at IS NULL AND $2::text IS NOT NULL",
+    };
+    if (typeof action !== 'string' || !Object.hasOwn(operations, action)) throw error(400, 'Invalid action.');
+    if (action === 'extend' && (!Number.isInteger(days) || days < 1 || days > 365)) throw error(400, 'Enter an extension of 1 to 365 days.');
+    const args = action === 'extend' ? [paymentId, account, days, action] : [paymentId, account, action];
+    const changed = await one(`WITH changed AS (UPDATE payments ${operations[action]} RETURNING id,expires)
+      INSERT INTO pass_audit(payment_id,actor,action,expires) SELECT id,$2,$${args.length},expires FROM changed RETURNING payment_id`, args);
+    if (!changed && action === 'approve' && await one("SELECT id FROM payments WHERE id=$1 AND status='approved'", [paymentId])) return json(res, 200, {});
+    if (!changed) throw error(409, 'This payment has already changed.');
+    return json(res, 200, {});
+  }
+  throw error(404, 'Page unavailable.');
+}
+
+const http = createServer();
+const vite = dev ? await (await import('vite')).createServer({
+  server: { middlewareMode: true, hmr: { server: http }, fs: {
+    deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/server.mjs', '**/db.mjs',
+      '**/strategy.mjs', '**/worker.mjs', '**/replay.mjs', '**/schema.sql', '**/test/**'],
+  } },
+  appType: 'spa',
+}) : null;
+const root = resolve('dist');
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+http.on('request', async (req, res) => {
+  try {
+    const url = new URL(req.url, origin);
+    if (url.origin !== origin.origin) throw error(400, 'Invalid URL.');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    if (!dev) res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; style-src 'self'; script-src 'self'");
+    if (url.pathname.startsWith('/api/')) {
+      res.setHeader('Cache-Control', 'no-store');
+      await api(req, res, url);
+      return;
+    }
+    if (vite) return vite.middlewares(req, res);
+    const file = resolve(root, '.' + (url.pathname === '/' ? '/index.html' : url.pathname));
+    const type = mime[extname(file)];
+    if (!file.startsWith(root + sep) || !type || !['GET', 'HEAD'].includes(req.method)) throw error(404, 'Page unavailable.');
+    const content = await readFile(file).catch(() => { throw error(404, 'Page unavailable.'); });
+    res.writeHead(200, { 'Content-Type': type + '; charset=utf-8' }).end(req.method === 'HEAD' ? undefined : content);
+  } catch (cause) {
+    if (!cause.status) console.error('Request failed', cause.code || cause.name);
+    if (!res.headersSent && !res.destroyed) json(res, cause.status || 500, { error: cause.status ? cause.message : 'Service temporarily unavailable.' });
+    else if (!res.writableEnded) res.end();
+  }
+});
+http.listen(Number(process.env.PORT || 5173), process.env.HOST || (dev ? '127.0.0.1' : '0.0.0.0'),
+  () => console.log('BrandyFx listening on ' + origin.origin));
