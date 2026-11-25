@@ -11,7 +11,7 @@ type Order = Payment & { account_id: string; reference: string; amount: string; 
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
-const preview = import.meta.env.DEV && new URLSearchParams(location.search).has('preview');
+const preview = new URLSearchParams(location.search).has('preview');
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
 const name = (market: Market) => market.name.replace('Volatility ', 'Vol ').replace(' Index', '');
@@ -314,7 +314,7 @@ function App() {
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
-      <button className="primary deriv-login" type="button" onClick={() => setNotice('Deriv sign-in will be connected after BrandyFx OAuth setup.')}>Log in with Deriv</button>
+      <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?preview')}>Log in with Deriv</button>
       <div className="login-divider"><span>or</span></div>
       <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
       <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
