@@ -61,7 +61,7 @@ function useMarkets() {
 }
 
 function Mark() {
-  return <span className="mark" aria-hidden="true"><i /><i /><i /></span>;
+  return <img className="mark" src="/brand/brandyfx-app-icon.png" alt="" />;
 }
 
 function Ribbon({ markets }: { markets: Market[] }) {
@@ -89,7 +89,7 @@ function Chart({ points }: { points: string[] }) {
       ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       const style = getComputedStyle(chart);
       const ink = style.getPropertyValue('--line').trim();
-      const copper = style.getPropertyValue('--copper').trim();
+      const emerald = style.getPropertyValue('--emerald').trim();
       ctx.strokeStyle = ink;
       ctx.lineWidth = 1;
       for (let y = 18; y < height; y += (height - 20) / 4) {
@@ -104,14 +104,14 @@ function Chart({ points }: { points: string[] }) {
       ]);
       ctx.beginPath();
       coordinates.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
-      ctx.strokeStyle = copper; ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = emerald; ctx.lineWidth = 2; ctx.stroke();
       const [x, y] = coordinates.at(-1)!;
       ctx.lineTo(x, height); ctx.lineTo(3, height); ctx.closePath();
       const fill = ctx.createLinearGradient(0, 0, 0, height);
       fill.addColorStop(0, style.getPropertyValue('--chart-fill').trim());
       fill.addColorStop(1, style.getPropertyValue('--chart-clear').trim());
       ctx.fillStyle = fill; ctx.fill();
-      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = copper; ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = emerald; ctx.fill();
     }
     draw();
     const observer = new ResizeObserver(draw);
@@ -308,7 +308,9 @@ function App() {
       {member.accounts.map(account => <button className="quiet" key={account} disabled={pending} onClick={() => void run('account', { account })}>{account}</button>)}
     </section></main>;
   else page = <main className="login-page">
-    <a className="login-brand" href="/"><Mark />BRANDYFX</a>
+    <a className="login-brand" href="/" aria-label="BrandyFx home">
+      <img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" />
+    </a>
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
@@ -323,7 +325,7 @@ function App() {
     <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg">
       <source src="/media/brandyfx-background.mp4" type="video/mp4" />
     </video>
-  </div>{!showingDesk && !member.account && !member.accounts?.length && <div className="backdrop-shade" aria-hidden="true" />}
+  </div><div className="backdrop-shade" aria-hidden="true" />
   {showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
@@ -334,7 +336,7 @@ function App() {
   </header> : null}
   {showingDesk || member.account || member.accounts?.length ? <Ribbon markets={markets} /> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
-    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span>BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
+    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setTokenDialog(false); }}>
       <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
