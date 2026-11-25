@@ -9,6 +9,7 @@ type Offer = { amount: string; currency: string; days: number; instructions: str
 type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string };
 type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number };
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; offer?: Offer };
+const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
 const preview = import.meta.env.DEV && new URLSearchParams(location.search).has('preview');
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
@@ -251,6 +252,7 @@ function App() {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
+  const [tokenDialog, setTokenDialog] = useState(false);
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
   const canView = Boolean(member.account && (member.admin || (member.launched && member.passUntil)));
   async function refresh() {
@@ -305,30 +307,45 @@ function App() {
     <p>Use the same Deriv account each time to keep your pass.</p></div><section className="access-panel account-list">
       {member.accounts.map(account => <button className="quiet" key={account} disabled={pending} onClick={() => void run('account', { account })}>{account}</button>)}
     </section></main>;
-  else page = <main className="welcome layout">
-    <div className="welcome-copy"><h1>BrandyFx</h1><p>Live Deriv signals for price moves and last digits.</p>
-      <a className="primary" href="/api/deriv/start">Continue with Deriv <span aria-hidden="true">↗</span></a>
-      {import.meta.env.DEV && <a className="preview-link" href="/?preview">Open desk preview</a>}
-    </div>
-    <section className="welcome-market" aria-label="Market preview">
-      <div className="section-heading"><h2>{markets[0]?.name || 'Deriv market feed'}</h2><span className="status">{markets[0]?.live ? 'Live' : 'Awaiting ticks'}</span></div>
-      {markets[0]?.points.length ? <>
-        <div className="big-quote" key={markets[0].quote}>{markets[0].quote}</div>
-        <Chart points={markets[0].points} />
-        <div className="market-bottom"><span>Recent ticks</span><span>{stamp(markets[0].updated)}</span></div>
-      </> : <p className="market-wait">Live quotes will appear when the feed connects.</p>}
+  else page = <main className="login-page">
+    <a className="login-brand" href="/"><Mark />BRANDYFX</a>
+    <section className="login-card">
+      <h1>Sign in</h1>
+      <p>Sign in to follow live Deriv signals and manage your access.</p>
+      <button className="primary deriv-login" type="button" onClick={() => setNotice('Deriv sign-in will be connected after BrandyFx OAuth setup.')}>Log in with Deriv</button>
+      <div className="login-divider"><span>or</span></div>
+      <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
+      <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
     </section>
+    {import.meta.env.DEV && <a className="preview-link login-preview" href="/?preview">Open desk preview</a>}
   </main>;
-  return <><header className="top"><a className="wordmark" href="/"><Mark />BrandyFx</a>
+  return <><div className="site-backdrop" aria-hidden="true">
+    <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg">
+      <source src="/media/brandyfx-background.mp4" type="video/mp4" />
+    </video>
+  </div>{!showingDesk && !member.account && !member.accounts?.length && <div className="backdrop-shade" aria-hidden="true" />}
+  {showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Admin</button></>}
       {(member.account || member.accounts?.length) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
-  </header><Ribbon markets={markets} />
-    {notice && <p className="notice layout" role="alert">{notice}</p>}{page}
-    <footer className="layout"><span>BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer>
+  </header> : null}
+  {showingDesk || member.account || member.accounts?.length ? <Ribbon markets={markets} /> : null}
+    {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
+    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span>BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
+      <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
+    {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setTokenDialog(false); }}>
+      <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
+        <button className="dialog-close" type="button" aria-label="Close" onClick={() => setTokenDialog(false)}>×</button>
+        <h2 id="token-title">Log in with API token</h2>
+        <p>Token sign-in will be enabled after secure verification is configured.</p>
+        <label>Deriv API token<input type="password" autoComplete="off" disabled placeholder="Not available yet" /></label>
+        <p className="token-note">Your token is not collected or stored on this page.</p>
+        <button className="primary" type="button" onClick={() => setTokenDialog(false)}>Got it</button>
+      </section>
+    </div>}
   </>;
 }
 

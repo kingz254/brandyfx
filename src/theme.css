@@ -166,6 +166,24 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
   --night-text: #f6f7ff;
   --night-muted: #ccd5ed;
   --night-accent: #ffc69c;
+  --night-ink: #211814;
+  --login-action: #ff704b;
+  --login-action-hover: #ff8767;
+  --login-surface: #11131bd9;
+  --login-surface-solid: #11131b;
+  --login-surface-notice: #11131be8;
+  --login-footer: #090a0dd9;
+  --login-shadow: #05071170;
+  --login-line: #ffffff23;
+  --login-line-soft: #ffffff22;
+  --login-inset: #ffffff12;
+  --login-line-faint: #ffffff20;
+  --login-fill-faint: #ffffff09;
+  --login-fill: #ffffff16;
+  --login-input: #ffffff0b;
+  --login-scrim: #070911aa;
+  --login-fallback: #171923;
+  --backdrop-wash: #11172566;
   --night-hover: #ffffff22;
   --select-bg: #ffffffc7;
   --radius: 1.45rem;
@@ -173,11 +191,10 @@ footer { display: flex; align-items: center; justify-content: space-between; gap
 }
 
 body {
-  background: radial-gradient(ellipse at 13% 3%, var(--light-bloom), transparent 48%),
-    radial-gradient(ellipse at 92% 0%, var(--cool-bloom), transparent 56%),
-    radial-gradient(ellipse at 70% 88%, var(--warm-bloom), transparent 43%), var(--bg);
+  background: transparent;
   min-height: 100dvh;
 }
+#root { position: relative; z-index: 2; min-height: 100dvh; }
 .top {
   position: sticky;
   z-index: 2;
@@ -344,4 +361,87 @@ footer { margin-top: 1.4rem; }
 }
 @media (prefers-reduced-transparency: reduce) {
   .top, .tabs, .ribbon, .quiet { background: var(--glass-solid); backdrop-filter: none; }
+}
+
+.site-backdrop, .backdrop-shade {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: clip;
+  pointer-events: none;
+}
+.backdrop-video { width: 100%; height: 100%; object-fit: cover; opacity: .5; }
+.backdrop-shade { z-index: 1; background: var(--backdrop-wash); }
+.login-page {
+  position: relative;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1.5rem;
+  min-height: calc(100svh - 7.1rem);
+  padding: 3rem 1.2rem;
+  color: var(--night-text);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  font: 750 1.25rem/1 var(--display);
+  letter-spacing: .025em;
+}
+.login-brand .mark { background: var(--glass); backdrop-filter: blur(14px); }
+.login-card, .token-dialog {
+  width: min(100%, 30rem);
+  padding: 1.35rem;
+  border: 1px solid var(--login-line-soft);
+  border-radius: 1.3rem;
+  background: var(--login-surface);
+  color: var(--night-text);
+  box-shadow: 0 22px 65px var(--login-shadow), inset 0 1px var(--login-inset);
+  backdrop-filter: blur(25px) saturate(145%);
+}
+.login-card h1 { font: 650 1.65rem/1.15 var(--numbers); letter-spacing: -.06em; }
+.login-card > p { color: var(--night-muted); }
+.deriv-login { width: 100%; margin-top: 1rem; min-height: 2.75rem; color: var(--night-ink); background: var(--login-action); border: 0; border-radius: .68rem; }
+.deriv-login:hover { background: var(--login-action-hover); }
+.login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.05rem 0; color: var(--night-muted); font-size: .85rem; }
+.login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--login-line-faint); }
+.token-login { width: 100%; min-height: 2.65rem; border: 1px solid var(--login-line); border-radius: .68rem; color: var(--night-text); background: var(--login-fill-faint); }
+.token-login:hover { background: var(--login-fill); }
+.token-login span { margin-right: .4rem; }
+.login-card .login-terms { margin-top: 1rem; text-align: center; font-size: .78rem; }
+.login-terms a { color: var(--night-text); font-weight: 650; text-decoration: underline; text-underline-offset: .16em; }
+.login-preview { color: var(--night-muted); }
+.risk-footer {
+  position: relative;
+  padding: 1rem max(1.2rem, calc((100% - 88rem) / 2));
+  border-top: 1px solid var(--login-line);
+  background: var(--login-footer);
+  color: var(--night-muted);
+  font-size: .8rem;
+  backdrop-filter: blur(18px);
+}
+.risk-footer strong { color: var(--night-text); }
+.login-notice { position: absolute; z-index: 1; top: 1rem; left: 50%; width: min(90%, 32rem); transform: translateX(-50%); padding: .65rem 1rem; border: 1px solid var(--login-line-soft); border-radius: .8rem; background: var(--login-surface-notice); color: var(--night-text); text-align: center; }
+.dialog-scrim { position: fixed; z-index: 5; inset: 0; display: grid; place-items: center; padding: 1rem; background: var(--login-scrim); backdrop-filter: blur(8px); }
+.token-dialog { position: relative; color: var(--night-text); }
+.token-dialog h2 { margin: 0 2rem .65rem 0; }
+.token-dialog p { color: var(--night-muted); }
+.token-dialog label { margin-top: 1rem; }
+.token-dialog input { background: var(--login-input); color: var(--night-muted); }
+.token-dialog .token-note { margin-top: .65rem; font-size: .8rem; }
+.token-dialog .primary { margin-top: 1rem; min-width: 7rem; }
+.dialog-close { position: absolute; top: .5rem; right: .65rem; width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: var(--login-inset); font-size: 1.3rem; }
+@media (max-width: 40rem) {
+  .login-page { min-height: calc(100svh - 9rem); gap: 1.1rem; }
+  .login-card { padding: 1.15rem; }
+  .risk-footer { padding: .85rem 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop-video { display: none; }
+  .site-backdrop { background: var(--login-fallback) url("/media/brandyfx-background-poster.jpg") center / cover no-repeat; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .login-card, .token-dialog, .risk-footer, .dialog-scrim { backdrop-filter: none; }
+  .login-card, .token-dialog { background: var(--login-surface-solid); }
 }
