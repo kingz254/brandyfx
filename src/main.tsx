@@ -24,6 +24,9 @@ const defaultSettings: PublicSettings = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: .5, glassOpacity: .72,
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerActive: false, offerEndsAt: '',
+  riseFallPrice: 300, riseFallOffer: 200, riseFallDays: 0,
+  overUnderPrice: 300, overUnderOffer: 200, overUnderDays: 0,
+  matchesPrice: 450, matchesOffer: 300, matchesDays: 0,
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
   socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
 };
@@ -183,10 +186,11 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
 
 function Access({ member, run, settings }: { member: Member; run: (path: string, data?: object) => Promise<boolean>; settings: PublicSettings }) {
   const [reference, setReference] = useState('');
-  const [tier, setTier] = useState<'regular' | 'premium'>('regular');
+  const [tier, setTier] = useState<'riseFall' | 'overUnder' | 'matches'>('riseFall');
   const payment = member.payment;
-  const amount = settings.offerActive ? (tier === 'premium' ? settings.premiumOffer : settings.regularOffer) : (tier === 'premium' ? settings.premiumPrice : settings.regularPrice);
-  const days = tier === 'premium' ? settings.premiumDays : settings.regularDays;
+  const amount = settings.offerActive ? settings[`${tier}Offer`] : settings[`${tier}Price`];
+  const days = settings[`${tier}Days`];
+  const planLabels = { riseFall: 'Rise / Fall', overUnder: 'Over 6 / Under 3', matches: 'Matches only' };
   const status = member.passUntil ? 'Pass active' : payment?.revoked_at ? 'Pass revoked' :
     payment?.status === 'pending' ? 'Approval pending' : payment?.status === 'approved' ? 'Pass expired' :
       payment?.status === 'declined' ? 'Request declined' : 'Deriv connected';
@@ -194,7 +198,7 @@ function Access({ member, run, settings }: { member: Member; run: (path: string,
     <div><p className="status">{status}</p><h1>Get desk access</h1><p>Submit your payment reference for review.</p></div>
     <section className="access-panel">
       {!member.launched ? <><h2>Paid access is opening soon</h2><p>Payment instructions will appear here when passes go on sale.</p></>
-        : <><div className="access-plan-switch" role="group" aria-label="Choose access plan"><button type="button" aria-pressed={tier === 'regular'} onClick={() => setTier('regular')}>Regular</button><button type="button" aria-pressed={tier === 'premium'} onClick={() => setTier('premium')}>Premium</button></div><h2>USD {amount.toFixed(2)} <small>{days ? `for ${days} ${days === 1 ? 'day' : 'days'}` : 'access term is being configured'}</small></h2>
+        : <><div className="access-plan-switch" role="group" aria-label="Choose access plan">{(Object.keys(planLabels) as Array<keyof typeof planLabels>).map(key => <button key={key} type="button" aria-pressed={tier === key} onClick={() => setTier(key)}>{planLabels[key]}</button>)}</div><h2>{planLabels[tier]} · USD {amount.toFixed(2)} <small>{days ? `for ${days} ${days === 1 ? 'day' : 'days'}` : 'access term is being configured'}</small></h2>
           {payment?.status === 'pending' ? <p>Your payment reference is being reviewed. This page updates when the review is complete.</p>
             : <><p className="instructions">Send USDT using the TRON (TRC20) network to:<br/><strong>{settings.trc20Wallet || 'Wallet address will be published here before launch.'}</strong></p>{(!days || !settings.trc20Wallet) && <p>Payment instructions will be enabled when the access term and wallet address are configured.</p>}<form onSubmit={async event => {
               event.preventDefault();
@@ -263,7 +267,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
     <form className="site-settings-form" onSubmit={async event => {
       event.preventDefault(); setBusy(true); setSaved(''); setError('');
       const raw = Object.fromEntries(new FormData(event.currentTarget));
-      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), regularPrice: Number(raw.regularPrice), premiumPrice: Number(raw.premiumPrice), regularOffer: Number(raw.regularOffer), premiumOffer: Number(raw.premiumOffer), regularDays: Number(raw.regularDays), premiumDays: Number(raw.premiumDays), offerEnabled: raw.offerEnabled === 'on' };
+      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), riseFallPrice: Number(raw.riseFallPrice), riseFallOffer: Number(raw.riseFallOffer), riseFallDays: Number(raw.riseFallDays), overUnderPrice: Number(raw.overUnderPrice), overUnderOffer: Number(raw.overUnderOffer), overUnderDays: Number(raw.overUnderDays), matchesPrice: Number(raw.matchesPrice), matchesOffer: Number(raw.matchesOffer), matchesDays: Number(raw.matchesDays), offerEnabled: raw.offerEnabled === 'on' };
       try { const result = await api<PublicSettings>('admin/site-settings', payload); onSaved(result); setSaved('Settings saved.'); }
       catch (cause) { setError((cause as Error).message); }
       finally { setBusy(false); }
@@ -273,7 +277,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
         <div className="admin-field-grid"><label>Video opacity <output>{Math.round(settings.videoOpacity * 100)}%</output><input name="videoOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.videoOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label>
           <label>Glass opacity <output>{Math.round(settings.glassOpacity * 100)}%</output><input name="glassOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.glassOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label></div>
       </section>
-      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{(['regular', 'premium'] as const).map(tier => <fieldset key={tier}><legend>{tier === 'regular' ? 'Regular' : 'Premium'}</legend><label>Standard price (USD)<input name={`${tier}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${tier}Price`]} required/></label><label>Offer price (USD)<input name={`${tier}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${tier}Offer`]} required/></label><label>Access days<input name={`${tier}Days`} type="number" min="0" max="365" defaultValue={settings[`${tier}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
+      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{([{ key: 'riseFall', label: 'Rise / Fall' }, { key: 'overUnder', label: 'Over 6 / Under 3' }, { key: 'matches', label: 'Matches only' }] as const).map(({ key, label }) => <fieldset key={key}><legend>{label}</legend><label>Standard price (USD)<input name={`${key}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Price`]} required/></label><label>Offer price (USD)<input name={`${key}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Offer`]} required/></label><label>Access days<input name={`${key}Days`} type="number" min="0" max="365" defaultValue={settings[`${key}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
         <label className="admin-check"><input name="offerEnabled" type="checkbox" defaultChecked={settings.offerActive}/> Enable launch offer</label>
         <div className="admin-field-grid"><label>Offer end date/time<input name="offerEndsAt" type="datetime-local" defaultValue={settings.offerEndsAt ? new Date(settings.offerEndsAt).toISOString().slice(0, 16) : ''}/></label><label>Promotion heading<input name="promoHeading" maxLength={90} defaultValue={settings.promoHeading} required/></label></div>
         <label>Promotion subheading<input name="promoSubheading" maxLength={140} defaultValue={settings.promoSubheading} required/></label>

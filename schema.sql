@@ -18,16 +18,19 @@ CREATE TABLE IF NOT EXISTS site_settings (
 );
 INSERT INTO site_settings(id,settings) VALUES(true,'{"backgroundUrl":"/media/brandyfx-background.mp4","videoOpacity":0.5,"glassOpacity":0.72,"regularPrice":300,"premiumPrice":450,"regularOffer":200,"premiumOffer":300,"regularDays":0,"premiumDays":0,"offerEnabled":false,"offerEndsAt":"","promoHeading":"Don''t miss your chance","promoSubheading":"Grants up to 20% off","trc20Wallet":""}'::jsonb)
 ON CONFLICT(id) DO NOTHING;
+UPDATE site_settings SET settings='{"riseFallPrice":300,"riseFallOffer":200,"riseFallDays":0,"overUnderPrice":300,"overUnderOffer":200,"overUnderDays":0,"matchesPrice":450,"matchesOffer":300,"matchesDays":0}'::jsonb || settings WHERE id=true;
 CREATE TABLE IF NOT EXISTS payments (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, account_id text NOT NULL,
   reference text NOT NULL UNIQUE, status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'approved', 'declined')),
   created timestamptz NOT NULL DEFAULT now(),
   amount numeric(12,2) NOT NULL, currency text NOT NULL, days integer NOT NULL,
-  package text NOT NULL DEFAULT 'regular' CHECK(package IN ('regular','premium')),
+  package text NOT NULL DEFAULT 'riseFall' CHECK(package IN ('regular','premium','riseFall','overUnder','matches')),
   reviewed_by text, reviewed_at timestamptz, expires timestamptz, revoked_at timestamptz
 );
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'regular';
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_package_check;
+ALTER TABLE payments ADD CONSTRAINT payments_package_check CHECK(package IN ('regular','premium','riseFall','overUnder','matches'));
 CREATE INDEX IF NOT EXISTS payments_member ON payments(account_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS payments_one_pending ON payments(account_id) WHERE status='pending';
 CREATE TABLE IF NOT EXISTS pass_audit (

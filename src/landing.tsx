@@ -11,6 +11,15 @@ export type PublicSettings = {
   premiumOffer: number;
   regularDays: number;
   premiumDays: number;
+  riseFallPrice: number;
+  riseFallOffer: number;
+  riseFallDays: number;
+  overUnderPrice: number;
+  overUnderOffer: number;
+  overUnderDays: number;
+  matchesPrice: number;
+  matchesOffer: number;
+  matchesDays: number;
   offerActive: boolean;
   offerEndsAt: string;
   promoHeading: string;
@@ -23,7 +32,7 @@ export type PublicSettings = {
 };
 
 const tabs = [
-  ['home', 'Home'], ['intelligence', 'Intelligence'], ['process', 'How it works'],
+  ['home', 'Home'], ['free-bots', 'Free Bots'], ['process', 'How it works'],
   ['challenge', 'Challenge'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['faq', 'FAQ'],
 ] as const;
 
@@ -62,11 +71,24 @@ function SocialLinks({ settings, className = '' }: { settings: PublicSettings; c
   </nav>;
 }
 
-const signalFamilies = [
-  { name: 'Rise / Fall', detail: 'Directional setups shaped by the latest tick movement.' },
-  { name: 'Over 6 / Under 3', detail: 'Last-digit contracts with a clear signal and expiry context.' },
-  { name: 'Matches / Differs', detail: 'Digit signals for traders who follow the final tick.' },
+const freeBots = [
+  { name: 'Mavic Rise/Fall', category: 'Rise / Fall', description: 'Rise/Fall strategy preset. Review duration, stake and limits before running.', file: 'mavic-air-rise-fall.xml' },
+  { name: 'Turbo O/U', category: 'Over / Under', description: 'Over/Under strategy preset with configurable stake progression.', file: 'turbo-over-under.xml' },
+  { name: 'Core Bot V3', category: 'Matches / Differs', description: 'Core strategy preset with a Matches/Differs contract. Inspect conditions and money management.', file: 'core-bot-v3.xml' },
+  { name: 'One-Tick Over 2', category: 'Digit Over', description: 'One-tick digit-over preset with its threshold set in the bot configuration.', file: 'one-tick-over-2.xml' },
+  { name: 'Legacy Over 2026', category: 'Digit Over', description: 'Digit-over preset with configurable prediction and stake progression.', file: 'legacy-over-2026.xml' },
+  { name: 'Ultra Recovery', category: 'Recovery', description: 'Recovery-style preset. Review its stake progression and loss limits before use.', file: 'ultra-recovery.xml' },
+  { name: 'Elite Startrader', category: 'Digit analysis', description: 'Trading preset with digit analysis and configurable prediction settings.', file: 'elite-startrader.xml' },
+  { name: 'Market Legend v2', category: 'General strategy', description: 'General-purpose strategy preset. Inspect contract and risk settings before running.', file: 'market-legend-v2.xml' },
+  { name: 'Godzilla', category: 'Multi-setting', description: 'Multi-setting strategy preset. Review all risk controls in Builder first.', file: 'godzilla.xml' },
+  { name: 'Signals Under', category: 'Digit Under', description: 'Digit-under signal strategy preset with editable threshold settings.', file: 'signals-under.xml' },
 ];
+
+const planCards = [
+  { key: 'riseFall', title: 'Rise / Fall', name: 'Rise / Fall Desk', description: 'Access focused on directional Rise/Fall signals.', bot: 'Mavic Rise/Fall', highlight: 'Directional signals' },
+  { key: 'overUnder', title: 'Over 6 / Under 3', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', bot: 'Turbo O/U', highlight: 'Digit thresholds' },
+  { key: 'matches', title: 'Matches only', name: 'Matches Desk', description: 'Access focused on Matches digit signals.', bot: 'Core Bot V3', highlight: 'Matches signals' },
+] as const;
 
 const steps = [
   ['01', 'Read the live feed', 'Follow Deriv tick data and keep the current price context close to each signal.'],
@@ -161,15 +183,14 @@ function Countdown({ endsAt }: { endsAt: string }) {
   </div>;
 }
 
-function PackageCard({ tier, settings }: { tier: 'regular' | 'premium'; settings: PublicSettings }) {
-  const premium = tier === 'premium';
-  const base = premium ? settings.premiumPrice : settings.regularPrice;
-  const offer = premium ? settings.premiumOffer : settings.regularOffer;
+function PackageCard({ plan, settings }: { plan: (typeof planCards)[number]; settings: PublicSettings }) {
+  const base = settings[`${plan.key}Price`];
+  const offer = settings[`${plan.key}Offer`];
   const amount = settings.offerActive ? offer : base;
   const discount = settings.offerActive && base > 0 ? Math.max(0, Math.round((base - offer) * 100 / base)) : 0;
-  const days = premium ? settings.premiumDays : settings.regularDays;
-  return <article className={`package-card${premium ? ' premium-package' : ''}`}>
-    <span className="package-tag">{premium ? 'Premium · Recommended' : 'Regular'}</span>
+  const days = settings[`${plan.key}Days`];
+  return <article className={`package-card${plan.key === 'matches' ? ' premium-package' : ''}`}>
+    <span className="package-tag">{plan.title}</span>
     {settings.offerActive && <><div className="package-promo"><span>{settings.promoHeading}</span></div><p className="package-promo-sub">{settings.promoSubheading}</p></>}
     <div className="package-price">
       {discount > 0 && <span className="package-discount">{discount}% OFF</span>}
@@ -177,13 +198,13 @@ function PackageCard({ tier, settings }: { tier: 'regular' | 'premium'; settings
       {discount > 0 && <s className="package-previous">${base.toFixed(0)}</s>}
     </div>
     {settings.offerActive && settings.offerEndsAt && <Countdown endsAt={settings.offerEndsAt} />}
-    <p className="package-intro">{premium ? 'Expanded access to the BrandyFx signal desk.' : 'Start with the core BrandyFx signal desk.'}</p>
+    <p className="package-intro">{plan.description}</p>
     <ul className="package-features">
       <li>Live Deriv volatility market context</li>
-      <li>Rise / Fall, Over 6 / Under 3 and Matches / Differs</li>
-      <li>Signal history and risk reminders</li>
+      <li>{plan.highlight} and signal history</li>
+      <li>One free Pipforge bot: {plan.bot}</li>
+      <li>Risk reminders and your own trade decisions</li>
       <li>{days > 0 ? `${days} days of access` : 'Access term set by BrandyFx'}</li>
-      {premium && <li>Everything included in Regular</li>}
     </ul>
     <a className="landing-primary package-action" href="/">Continue with Deriv <span aria-hidden="true">↗</span></a>
     <small>TRC20 accepted · Card and M-Pesa coming soon</small>
@@ -211,15 +232,20 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
       <p className="feed-foot">Prices are informational. They are not a promise of a signal or trading result.</p>
     </section>
   </section>;
-  else if (currentTab === 'intelligence') content = <section className="tab-page" aria-labelledby="page-title">
-    <header className="tab-heading"><h1 id="page-title">Signal context,<br />without the clutter.</h1><p>Three signal families, one live Deriv market view.</p></header>
-    <div className="family-grid">{signalFamilies.map((family, index) => <article className="family-panel" key={family.name}><h2>{family.name}</h2><p>{family.detail}</p></article>)}</div>
-    <article className="intelligence-note"><div><h2>Built for Deriv volatility markets.</h2></div><p>Follow V10, V25, V50, V75 and V100 when they are available in the live feed. Compare current market context and signal history from one desk.</p></article>
+  else if (currentTab === 'free-bots') content = <section className="tab-page free-bots-page" aria-labelledby="page-title">
+    <header className="tab-heading"><h1 id="page-title">Free bots.<br />Built to inspect.</h1><p>Download ten XML strategy examples from the Pipforge collection and review every block before you run one.</p></header>
+    <a className="pipforge-sponsor" href="https://github.com/kingz254/pip" target="_blank" rel="noreferrer"><span className="sponsor-mark" aria-hidden="true">P</span><span><small>INDEPENDENTLY BUILT BOT LIBRARY</small><strong>Proudly sponsored by Pipforge</strong></span><span className="sponsor-link">Explore Pipforge ↗</span></a>
+    <div className="free-bot-grid">{freeBots.map((bot, index) => <article className="free-bot-card" key={bot.file}>
+      <div className="free-bot-top"><span className="free-bot-index">{String(index + 1).padStart(2, '0')}</span><span className="free-bot-category">{bot.category}</span></div>
+      <h2>{bot.name}</h2><p>{bot.description}</p>
+      <a className="free-bot-download" href={`/bots/${bot.file}`} download>{'Download XML'} <span aria-hidden="true">↓</span></a>
+    </article>)}</div>
+    <p className="bot-risk-note">These XML files can automate trades. Inspect the contract, stake progression and loss limits in Deriv Bot, and test with a demo account before considering live use. Automation does not remove trading risk.</p>
   </section>;
   else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">From live ticks<br />to a considered trade.</h1><p>Keep context in view, then make your own decision.</p></header><div className="process-list">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div></section>;
   else if (currentTab === 'challenge') content = <section className="tab-page challenge-section" aria-labelledby="page-title"><div className="challenge-copy"><h1 id="page-title">Build consistency<br />one session at a time.</h1><p>Use a clear routine: wait for a setup, keep your limits visible, and review what happened after each session. BrandyFx helps you follow the signal flow; every trade decision stays yours.</p><div className="challenge-tags"><span>Deriv signals</span><span>Live tick context</span><span>Risk-aware decisions</span></div><a className="landing-secondary" href="/?preview">Explore the terminal</a></div><article className="challenge-card"><div className="challenge-glyph" aria-hidden="true">BF</div><h2>Discipline over impulse.</h2><p>Set a session limit. Take a break. Never trade with money you cannot afford to lose.</p></article></section>;
   else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
-  else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Your signal desk.<br />Your terms.</h1><p>One-time access packages. Pay with USDT on TRC20.</p></header><div className="package-grid"><PackageCard tier="regular" settings={settings} /><PackageCard tier="premium" settings={settings} /></div><div className="payment-methods" role="list" aria-label="Payment methods"><article className="payment-option available" role="listitem"><span className="payment-symbol" aria-hidden="true">₮</span><span><b>USDT</b><small>TRON network · TRC20</small></span><strong>Available</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">▭</span><span><b>Card</b><small>Visa · Mastercard</small></span><strong>Coming soon</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">M</span><span><b>M-Pesa</b><small>Mobile money</small></span><strong>Coming soon</strong></article></div>{settings.trc20Wallet && <div className="wallet-address"><span>USDT · TRC20 wallet</span><code>{settings.trc20Wallet}</code></div>}<p className="pricing-note">Access is granted after the TRC20 payment reference is reviewed. Never send cryptocurrency to an address that is not displayed by BrandyFx.</p></section>;
+  else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} />)}</div><div className="payment-methods" role="list" aria-label="Payment methods"><article className="payment-option available" role="listitem"><span className="payment-symbol" aria-hidden="true">₮</span><span><b>USDT</b><small>TRON network · TRC20</small></span><strong>Available</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">▭</span><span><b>Card</b><small>Visa · Mastercard</small></span><strong>Coming soon</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">M</span><span><b>M-Pesa</b><small>Mobile money</small></span><strong>Coming soon</strong></article></div>{settings.trc20Wallet && <div className="wallet-address"><span>USDT · TRC20 wallet</span><code>{settings.trc20Wallet}</code></div>}<p className="pricing-note">Access is granted after the TRC20 payment reference is reviewed. Never send cryptocurrency to an address that is not displayed by BrandyFx.</p></section>;
   else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
   else if (currentTab === 'refund') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">Refund<br/>policy.</h1><p>Last Updated: January 27, 2026</p></header>
     <div className="policy-guarantee"><b>♛</b><div><h2>Royal Guarantee</h2><p>We stand behind every purchase. If BrandyFx doesn't deliver, you get your money back — no runaround, no questions asked.</p></div><strong>48 HOURS<small>Back Guarantee</small></strong></div>
@@ -242,7 +268,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     {content}
     <footer className="landing-footer">
       <section className="footer-brand-block"><a className="landing-brand" href={tabHref('home')}><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></a><p>Deriv signal intelligence for informed decisions.</p><SocialLinks settings={settings} className="site-social-links-footer"/></section>
-      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('intelligence')}>Intelligence</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/?preview">Access terminal</a></nav>
+      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('free-bots')}>Free Bots</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/?preview">Access terminal</a></nav>
       <nav className="footer-link-group" aria-label="Community"><h2>Community</h2><a href={tabHref('reviews')}>Read reviews</a>{socialMeta.filter(({ key }) => key !== 'socialEmail' && socialHref(settings, key)).map(({ key, label }) => <a key={key} href={socialHref(settings, key)} target="_blank" rel="noreferrer">{label}</a>)}<a href={tabHref('contact')}>Contact</a></nav>
       <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
       <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>

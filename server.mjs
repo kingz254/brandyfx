@@ -24,6 +24,9 @@ const DEFAULT_SITE_SETTINGS = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: 0.5, glassOpacity: 0.72,
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerEnabled: false, offerEndsAt: '',
+  riseFallPrice: 300, riseFallOffer: 200, riseFallDays: 0,
+  overUnderPrice: 300, overUnderOffer: 200, overUnderDays: 0,
+  matchesPrice: 450, matchesOffer: 300, matchesDays: 0,
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
   socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
 };
@@ -77,6 +80,9 @@ async function siteSettings() {
   return { backgroundUrl: settings.backgroundUrl, videoOpacity: settings.videoOpacity, glassOpacity: settings.glassOpacity,
     regularPrice: settings.regularPrice, premiumPrice: settings.premiumPrice, regularOffer: settings.regularOffer,
     premiumOffer: settings.premiumOffer, regularDays: settings.regularDays, premiumDays: settings.premiumDays,
+    riseFallPrice: settings.riseFallPrice, riseFallOffer: settings.riseFallOffer, riseFallDays: settings.riseFallDays,
+    overUnderPrice: settings.overUnderPrice, overUnderOffer: settings.overUnderOffer, overUnderDays: settings.overUnderDays,
+    matchesPrice: settings.matchesPrice, matchesOffer: settings.matchesOffer, matchesDays: settings.matchesDays,
     offerActive: Boolean(settings.offerEnabled && Number.isFinite(ends) && ends > Date.now()), offerEndsAt: settings.offerEndsAt,
     promoHeading: settings.promoHeading, promoSubheading: settings.promoSubheading, trc20Wallet: settings.trc20Wallet,
     socialEmail: settings.socialEmail || '', socialWhatsApp: settings.socialWhatsApp || '',
@@ -262,12 +268,12 @@ async function api(req, res, url) {
     if (!approved) throw error(409, 'Paid access is awaiting launch.');
     const { reference, package: tier = 'regular' } = await body(req);
     if (typeof reference !== 'string' || !/^[A-Za-z0-9-]{5,80}$/.test(reference.trim())) throw error(400, 'Enter a valid payment reference.');
-    if (!['regular', 'premium'].includes(tier)) throw error(400, 'Choose a valid access plan.');
+    if (!['riseFall', 'overUnder', 'matches'].includes(tier)) throw error(400, 'Choose a valid access plan.');
     const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
-          THEN CASE WHEN $3='premium' THEN (settings->>'premiumOffer')::numeric ELSE (settings->>'regularOffer')::numeric END
-          ELSE CASE WHEN $3='premium' THEN (settings->>'premiumPrice')::numeric ELSE (settings->>'regularPrice')::numeric END END AS amount,
-        CASE WHEN $3='premium' THEN (settings->>'premiumDays')::integer ELSE (settings->>'regularDays')::integer END AS days FROM settings)
+          THEN CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
+          ELSE CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
+        CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallDays')::integer WHEN 'overUnder' THEN (settings->>'overUnderDays')::integer ELSE (settings->>'matchesDays')::integer END AS days FROM settings)
       INSERT INTO payments(account_id,reference,amount,currency,days,package)
       SELECT $1,$2,amount,'USD',days,$3 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
@@ -299,15 +305,15 @@ async function api(req, res, url) {
       validSocialUrl(input.socialTelegram, ['t.me', 'telegram.me']) && validSocialUrl(input.socialInstagram, ['instagram.com']);
     const endTime = input.offerEndsAt === '' ? 0 : new Date(input.offerEndsAt).getTime();
     const offerEndsAt = input.offerEndsAt === '' ? '' : Number.isFinite(endTime) ? new Date(endTime).toISOString() : '';
-    if (!validBackground || !price(input.regularPrice) || !price(input.premiumPrice) || !price(input.regularOffer) || !price(input.premiumOffer) ||
-      input.regularOffer > input.regularPrice || input.premiumOffer > input.premiumPrice || !days(input.regularDays) || !days(input.premiumDays) ||
+    const plans = ['riseFall', 'overUnder', 'matches'];
+    const validPlans = plans.every(plan => price(input[`${plan}Price`]) && price(input[`${plan}Offer`]) && input[`${plan}Offer`] <= input[`${plan}Price`] && days(input[`${plan}Days`]));
+    if (!validBackground || !validPlans ||
       typeof input.offerEnabled !== 'boolean' || !['videoOpacity','glassOpacity'].every(key => typeof input[key] === 'number' && input[key] >= 0.1 && input[key] <= 0.9) ||
       typeof input.promoHeading !== 'string' || !input.promoHeading.trim() || input.promoHeading.length > 90 || typeof input.promoSubheading !== 'string' || !input.promoSubheading.trim() || input.promoSubheading.length > 140 || !validWallet ||
       input.offerEndsAt !== '' && !Number.isFinite(new Date(input.offerEndsAt).getTime()) ||
       input.offerEnabled && (!offerEndsAt || endTime <= Date.now()) || !validSocials) throw error(400, 'Check the prices, terms, media URL, offer end time, TRC20 address and contact links.');
     const settings = { backgroundUrl: input.backgroundUrl, videoOpacity: input.videoOpacity, glassOpacity: input.glassOpacity,
-      regularPrice: input.regularPrice, premiumPrice: input.premiumPrice, regularOffer: input.regularOffer, premiumOffer: input.premiumOffer,
-      regularDays: input.regularDays, premiumDays: input.premiumDays, offerEnabled: input.offerEnabled, offerEndsAt,
+      ...Object.fromEntries(plans.flatMap(plan => [[`${plan}Price`, input[`${plan}Price`]], [`${plan}Offer`, input[`${plan}Offer`]], [`${plan}Days`, input[`${plan}Days`]]])), offerEnabled: input.offerEnabled, offerEndsAt,
       promoHeading: input.promoHeading.trim(), promoSubheading: input.promoSubheading.trim(), trc20Wallet: input.trc20Wallet,
       socialEmail: input.socialEmail.trim(), socialWhatsApp: input.socialWhatsApp.trim(),
       socialTelegram: input.socialTelegram.trim(), socialInstagram: input.socialInstagram.trim() };
