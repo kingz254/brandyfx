@@ -287,6 +287,19 @@ async function api(req, res, url) {
     if (!result) throw error(409, 'This hash is already recorded, a payment is pending for this Deriv account, or the access term needs setup.');
     return json(res, 201, result);
   }
+  if (method === 'POST' && path === '/api/account-management') {
+    const { name, amount, startDate } = await body(req);
+    const today = new Date().toISOString().slice(0, 10);
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 ||
+      typeof amount !== 'number' || !Number.isFinite(amount) || amount < 100 || amount > 600 || Math.abs(amount * 100 - Math.round(amount * 100)) > 1e-8 ||
+      typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate) || startDate < today ||
+      new Date(`${startDate}T00:00:00Z`).toISOString().slice(0, 10) !== startDate) {
+      throw error(400, 'Enter your name, an amount from USD 100 to USD 600, and a valid upcoming date.');
+    }
+    const result = await one(`INSERT INTO account_management_requests(name,amount,start_date)
+      VALUES($1,$2,$3::date) RETURNING id`, [name.trim(), amount, startDate]);
+    return json(res, 201, result);
+  }
   if (!account && !admin) throw error(401, 'Sign in with Deriv.');
   if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
   if (!admin) throw error(403, 'Administrator access required.');
@@ -294,6 +307,10 @@ async function api(req, res, url) {
     return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,
       customer_name,customer_email,customer_country,rot_number
       FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 100`));
+  }
+  if (method === 'GET' && path === '/api/admin/account-management') {
+    return json(res, 200, await rows(`SELECT id,name,amount,start_date,status,created
+      FROM account_management_requests ORDER BY (status='new') DESC,id DESC LIMIT 200`));
   }
   if (method === 'GET' && path === '/api/admin/site-settings') return json(res, 200, await siteSettings());
   if (method === 'POST' && path === '/api/admin/site-settings') {

@@ -10,6 +10,7 @@ type Offer = { amount: string; currency: string; days: number; instructions: str
 type Profile = { name: string; email: string; country: string; rot_number: string };
 type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string; package?: string; reference?: string; amount?: string; currency?: string };
 type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string };
+type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
@@ -285,6 +286,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
       <div className="site-admin-actions"><button className="landing-primary" disabled={busy}>{busy ? 'Saving…' : 'Save site settings'}</button><button type="button" className="landing-secondary" onClick={() => void run('logout')}>Sign out</button></div>
     </form>
     <PaymentRecords run={run} />
+    <ManagementRequests />
   </main>;
 }
 
@@ -310,6 +312,27 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
         <td><code>{order.reference}</code></td><td><span className={`record-status record-${order.revoked_at ? 'revoked' : order.status}`}>{order.revoked_at ? 'Revoked' : order.status}</span></td>
         <td>{order.status === 'pending' ? <div className="record-actions"><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></div> : <small>{order.expires ? `Until ${dateLabel(order.expires)}` : order.status}</small>}</td>
       </tr>)}</tbody></table></div>}
+  </section>;
+}
+
+function ManagementRequests() {
+  const [requests, setRequests] = useState<ManagementRequest[]>([]);
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try { setRequests(await api<ManagementRequest[]>('admin/account-management')); setMessage(''); }
+    catch (cause) { setMessage((cause as Error).message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); }, []);
+  return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client enquiries</p><h2>Account-management requests</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
+    <p className="admin-panel-note">These are enquiries only; no account access or trading authorization is recorded here.</p>
+    {message && <p className="admin-message error" role="alert">{message}</p>}
+    {!message && !requests.length && <p>No account-management enquiries yet.</p>}
+    {!!requests.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Starting amount</th><th>Preferred date</th><th>Received</th><th>Status</th></tr></thead><tbody>
+      {requests.map(request => <tr key={request.id}><td>{request.name}</td><td>USD {Number(request.amount).toFixed(2)}</td><td>{request.start_date}</td><td>{dateLabel(request.created)}</td><td><span className={`record-status record-${request.status}`}>{request.status}</span></td></tr>)}
+    </tbody></table></div>}
   </section>;
 }
 

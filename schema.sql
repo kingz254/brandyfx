@@ -38,6 +38,16 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS rot_number text NOT NULL DEFAULT '
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS payments_member ON payments(account_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS payments_one_pending ON payments(account_id) WHERE status='pending';
+CREATE TABLE IF NOT EXISTS account_management_requests (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),
+  amount numeric(12,2) NOT NULL CHECK (amount BETWEEN 100 AND 600),
+  start_date date NOT NULL,
+  status text NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','closed')),
+  created timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE account_management_requests ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS account_management_requests_recent ON account_management_requests(created DESC);
 CREATE TABLE IF NOT EXISTS pass_audit (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   payment_id bigint NOT NULL REFERENCES payments(id), actor text NOT NULL,

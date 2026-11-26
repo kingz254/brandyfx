@@ -34,7 +34,7 @@ export type PublicSettings = {
 
 const tabs = [
   ['home', 'Home'], ['free-bots', 'Free Bots'], ['process', 'How it works'],
-  ['challenge', 'Challenge'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['faq', 'FAQ'],
+  ['account-management', 'Account management'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['faq', 'FAQ'],
 ] as const;
 
 type SocialKey = 'socialEmail' | 'socialWhatsApp' | 'socialTelegram' | 'socialInstagram';
@@ -110,6 +110,13 @@ const reviewCountries = [
   { country: 'Nigeria', code: 'ng', first: ['Chika', 'Adaeze', 'Tunde', 'Ife'], last: ['Okafor', 'Bello', 'Eze', 'Afolayan'] },
   { country: 'Ghana', code: 'gh', first: ['Ama', 'Kojo', 'Abena', 'Yaw'], last: ['Mensah', 'Owusu', 'Boateng', 'Asante'] },
   { country: 'South Africa', code: 'za', first: ['Lerato', 'Thandi', 'Sipho', 'Amara'], last: ['Mokoena', 'Naidoo', 'Dlamini', 'Botha'] },
+  { country: 'Jamaica', code: 'jm', first: ['Tiana', 'Andre', 'Shanice', 'Malik'], last: ['Campbell', 'Brown', 'Clarke', 'Morgan'] },
+  { country: 'Canary Islands, Spain', code: 'ic', first: ['Lucía', 'Mateo', 'Nerea', 'Diego'], last: ['Suárez', 'Díaz', 'García', 'Morales'] },
+  { country: 'Tanzania', code: 'tz', first: ['Neema', 'Baraka', 'Asha', 'Jabari'], last: ['Mushi', 'Mwakalinga', 'Mhando', 'Juma'] },
+  { country: 'Uganda', code: 'ug', first: ['Achieng', 'Kato', 'Nabirye', 'Mugisha'], last: ['Okello', 'Ssemanda', 'Nakamya', 'Tumusiime'] },
+  { country: 'Zimbabwe', code: 'zw', first: ['Tariro', 'Tendai', 'Nyasha', 'Tawanda'], last: ['Moyo', 'Ndlovu', 'Dube', 'Mutsvairo'] },
+  { country: 'Trinidad and Tobago', code: 'tt', first: ['Aaliyah', 'Ravi', 'Keisha', 'Dylan'], last: ['Joseph', 'Persad', 'Williams', 'Ramdeen'] },
+  { country: 'Barbados', code: 'bb', first: ['Jada', 'Andre', 'Kiera', 'Jamal'], last: ['Clarke', 'Best', 'Hinds', 'Gittens'] },
 ];
 const reviewCopy = [
   'The live price context makes it easier to review a setup before deciding what to do.',
@@ -148,6 +155,51 @@ function ReviewCarousel() {
       </article>)}
     </div>
   </>;
+}
+
+function AccountManagement({ whatsapp }: { whatsapp: string }) {
+  const [form, setForm] = useState({ name: '', amount: '100', startDate: '' });
+  const [reference, setReference] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [whatsappHref, setWhatsappHref] = useState('');
+  const today = new Date().toISOString().slice(0, 10);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setNotice('');
+    try {
+      const response = await fetch('/api/account-management', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: form.name, amount: Number(form.amount), startDate: form.startDate }) });
+      const data = await response.json() as { id?: string | number; error?: string };
+      if (!response.ok) throw new Error(data.error || 'Could not save your request.');
+      const id = String(data.id || '');
+      setReference(id);
+      if (whatsapp) {
+        const url = new URL(whatsapp);
+        url.searchParams.set('text', `Hello Brandy, I would like to discuss account management. My name is ${form.name.trim()}. Starting amount: USD ${Number(form.amount).toFixed(2)}. Preferred start date: ${form.startDate}. Request reference: ${id}. I understand this is an enquiry only; returns are not guaranteed.`);
+        setWhatsappHref(url.toString());
+      } else setNotice('Your request was saved, but BrandyFx has not configured its WhatsApp contact yet.');
+    } catch (cause) { setNotice((cause as Error).message || 'Could not save your request.'); }
+    finally { setBusy(false); }
+  }
+  return <section className="tab-page account-management-page" aria-labelledby="page-title">
+    <header className="tab-heading"><p className="landing-kicker">Client enquiries</p><h1 id="page-title">Account management,<br/>with risk in view.</h1><p>Request a conversation about account-management or pool-trading options. This form records an enquiry only; it does not start trading or authorize access to your Deriv account.</p></header>
+    <div className="management-layout">
+      <section className="management-details">
+        <article className="management-panel"><p className="landing-kicker">Starting capital</p><h2>USD 100–600</h2><p>Enquiries can be made for starting amounts from USD 100 up to USD 600. Any growth figures such as USD 100 to USD 1,000 or USD 600 to USD 6,000 are examples of goals only, not forecasts or promises. You could lose some or all of your capital.</p></article>
+        <article className="management-panel"><p className="landing-kicker">Before you proceed</p><ul><li>Keep your password, verification codes, and login under your control. Never send them to anyone.</li><li>You remain responsible for your Deriv account and all deposits and withdrawals.</li><li>Trading and pool trading carry substantial risk. Past or target results are not guaranteed.</li><li>The proposed 50/50 share of realized profits is not promised or applied by this enquiry. Any account management, pool trading, or profit-sharing would require licensing and legal review, a written agreement, and confirmation it is allowed by Deriv's terms.</li></ul></article>
+      </section>
+      <form className="management-form" onSubmit={submit}>
+        <p className="landing-kicker">Start a conversation</p><h2>Send an enquiry</h2>
+        <label>Your name<input autoComplete="name" maxLength={100} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required/></label>
+        <label>Starting amount (USD)<input type="number" min="100" max="600" step="0.01" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} required/><small>Choose an amount from USD 100 to USD 600.</small></label>
+        <label>Preferred start date<input type="date" min={today} value={form.startDate} onChange={event => setForm({ ...form, startDate: event.target.value })} required/></label>
+        <label className="management-consent"><input type="checkbox" required/>I understand this is an enquiry only and does not guarantee returns or authorize anyone to access my account.</label>
+        {notice && <p className="admin-message" role="status">{notice}</p>}
+        {reference ? <><p className="admin-message" role="status">Enquiry {reference} saved for BrandyFx admin review.</p>{whatsappHref && <a className="landing-primary management-submit" href={whatsappHref} target="_blank" rel="noreferrer">Send enquiry via WhatsApp <span aria-hidden="true">↗</span></a>}</>
+          : <button className="landing-primary management-submit" disabled={busy}>{busy ? 'Saving enquiry…' : 'Save and continue to WhatsApp'} <span aria-hidden="true">↗</span></button>}
+      </form>
+    </div>
+  </section>;
 }
 
 const refundSections = [
@@ -301,16 +353,16 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
   </section>;
   else if (currentTab === 'free-bots') content = <section className="tab-page free-bots-page" aria-labelledby="page-title">
     <header className="tab-heading"><h1 id="page-title">Free bots.<br />Built to inspect.</h1><p>Download ten XML strategy examples from the Pipforge collection and review every block before you run one.</p></header>
-    <a className="pipforge-sponsor" href="https://github.com/kingz254/pip" target="_blank" rel="noreferrer"><span className="sponsor-mark" aria-hidden="true">P</span><span><small>INDEPENDENTLY BUILT BOT LIBRARY</small><strong>Proudly sponsored by Pipforge</strong></span><span className="sponsor-link">Explore Pipforge ↗</span></a>
+    <a className="pipforge-sponsor" href="https://www.fxprotrades.site" target="_blank" rel="noreferrer"><span className="sponsor-mark" aria-hidden="true">FX</span><span><small>BOT LIBRARY PARTNER</small><strong>Proudly sponsored by FXPro</strong></span><span className="sponsor-link">Visit FXProTrades ↗</span></a>
     <div className="free-bot-grid">{freeBots.map((bot, index) => <article className="free-bot-card" key={bot.file}>
       <div className="free-bot-top"><span className="free-bot-index">{String(index + 1).padStart(2, '0')}</span><span className="free-bot-category">{bot.category}</span></div>
       <h2>{bot.name}</h2><p>{bot.description}</p>
-      <a className="free-bot-download" href={`/bots/${bot.file}`} download>{'Download XML'} <span aria-hidden="true">↓</span></a>
+      <div className="free-bot-actions"><a className="free-bot-download" href={`/bots/${bot.file}`} download>{'Download XML'} <span aria-hidden="true">↓</span></a><a className="free-bot-open" href={`https://www.fxprotrades.site/?bot=${encodeURIComponent(bot.file)}`} target="_blank" rel="noreferrer">Open in fxprotrades.site ↗</a></div>
     </article>)}</div>
     <p className="bot-risk-note">These XML files can automate trades. Inspect the contract, stake progression and loss limits in Deriv Bot, and test with a demo account before considering live use. Automation does not remove trading risk.</p>
   </section>;
   else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">From live ticks<br />to a considered trade.</h1><p>Keep context in view, then make your own decision.</p></header><div className="process-list">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div></section>;
-  else if (currentTab === 'challenge') content = <section className="tab-page challenge-section" aria-labelledby="page-title"><div className="challenge-copy"><h1 id="page-title">Build consistency<br />one session at a time.</h1><p>Use a clear routine: wait for a setup, keep your limits visible, and review what happened after each session. BrandyFx helps you follow the signal flow; every trade decision stays yours.</p><div className="challenge-tags"><span>Deriv signals</span><span>Live tick context</span><span>Risk-aware decisions</span></div><a className="landing-secondary" href="/?preview">Explore the terminal</a></div><article className="challenge-card"><div className="challenge-glyph" aria-hidden="true">BF</div><h2>Discipline over impulse.</h2><p>Set a session limit. Take a break. Never trade with money you cannot afford to lose.</p></article></section>;
+  else if (currentTab === 'account-management') content = <AccountManagement whatsapp={settings.socialWhatsApp}/>;
   else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
   else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} onCheckout={() => setPurchasePlan(plan)} />)}</div><p className="pricing-note">Pay only to the TRC20 address shown in the BrandyFx payment window. Verify the network and amount before sending.</p></section>;
   else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;

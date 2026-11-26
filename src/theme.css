@@ -885,7 +885,28 @@ body { color: var(--tone-fff); }
 .free-bot-card p { margin-top: .45rem; color: var(--tone-fff); font-size: .84rem; line-height: 1.55; }
 .free-bot-download { display: inline-flex; align-items: center; justify-content: space-between; gap: .8rem; width: 100%; margin-top: auto; padding-top: 1rem; color: var(--tone-51e7a3); font-size: .82rem; font-weight: 700; text-decoration: none; }
 .free-bot-download span { display: grid; place-items: center; width: 1.8rem; height: 1.8rem; border: 1px solid var(--tone-51e7a378); border-radius: 50%; }
+.free-bot-actions { display: grid; gap: .55rem; margin-top: auto; padding-top: .9rem; }
+.free-bot-actions .free-bot-download { margin-top: 0; padding-top: 0; }
+.free-bot-open { display: flex; align-items: center; justify-content: center; min-height: 2.45rem; padding: .55rem .7rem; border: 1px solid var(--tone-51e7a36e); border-radius: .6rem; color: var(--tone-fff); background: var(--tone-00c87916); font-size: .76rem; font-weight: 700; text-decoration: none; }
+.free-bot-open:hover, .free-bot-open:focus-visible { border-color: var(--tone-51e7a3); color: var(--tone-51e7a3); }
 .bot-risk-note { max-width: 88ch; margin-top: 1rem; color: var(--tone-fff); font-size: .82rem; line-height: 1.6; }
+.management-layout { display: grid; grid-template-columns: minmax(0,1.15fr) minmax(18rem,.85fr); align-items: start; gap: 1rem; }
+.management-details { display: grid; gap: .8rem; }
+.management-panel, .management-form { padding: clamp(1rem, 2.6vw, 1.5rem); border: 1px solid var(--tone-ffffff29); border-radius: 1.05rem; color: var(--tone-fff); background: linear-gradient(145deg,var(--tone-d9f8e414),var(--login-glass-mid),var(--login-glass-base)); box-shadow: 0 16px 38px var(--tone-0006),inset 0 1px var(--tone-fff2); backdrop-filter: blur(22px) saturate(145%); }
+.management-panel h2, .management-form h2 { margin: .35rem 0 .65rem; font-size: 1.35rem; }
+.management-panel p:not(.landing-kicker), .management-panel li { color: rgb(255 255 255 / .88); line-height: 1.65; }
+.management-panel ul { display: grid; gap: .6rem; padding-left: 1.1rem; }
+.management-panel li::marker { color: var(--tone-51e7a3); }
+.management-form { display: grid; gap: .8rem; }
+.management-form > .landing-kicker { margin: 0; color: var(--tone-51e7a3); }
+.management-form label { display: grid; gap: .35rem; color: var(--tone-fff); font-size: .82rem; font-weight: 650; }
+.management-form input:not([type=checkbox]) { width: 100%; min-height: 2.8rem; padding: .65rem .8rem; border: 1px solid var(--tone-ffffff29); border-radius: .55rem; color: var(--tone-fff); background: var(--tone-04130ed9); }
+.management-form input:focus-visible { outline: 2px solid var(--tone-51e7a3); outline-offset: 2px; }
+.management-form label small { color: rgb(255 255 255 / .68); font-size: .73rem; font-weight: 400; }
+.management-form .management-consent { grid-template-columns: auto minmax(0,1fr); align-items: start; font-weight: 400; line-height: 1.5; }
+.management-consent input { margin: .2rem 0 0; accent-color: var(--emerald-bright); }
+.management-submit { display: flex; width: 100%; align-items: center; justify-content: space-between; margin-top: .3rem; }
+.management-submit:disabled { opacity: .65; cursor: wait; }
 .payment-methods { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: .75rem; margin-top: 1.2rem; }
 .payment-option { display: flex; align-items: center; gap: .75rem; min-width: 0; padding: .9rem; border: 1px solid var(--tone-ffffff29); border-radius: .9rem; background: var(--glass); backdrop-filter: blur(18px); }
 .payment-option > span:nth-child(2) { display: grid; flex: 1; min-width: 0; }
@@ -950,6 +971,7 @@ body { color: var(--tone-fff); }
   .payment-option { flex-wrap: wrap; }
   .site-admin { width: min(100% - 1.75rem, 88rem); }
   .purchase-form, .client-profile dl { grid-template-columns: minmax(0,1fr); }
+  .management-layout { grid-template-columns: minmax(0,1fr); }
   .purchase-dialog { max-height: 94svh; }
   .purchase-heading, .purchase-form { padding-inline: 1rem; }
   .purchase-address { margin-inline: 1rem; padding-right: 5rem; }
