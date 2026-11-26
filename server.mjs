@@ -2,18 +2,17 @@ import { createServer } from 'node:http';
 import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { connect } from './db.mjs';
 import { VERSION } from './strategy.mjs';
 
 const dev = process.argv.includes('--dev');
-const origin = new URL(process.env.APP_ORIGIN || 'http://127.0.0.1:5173');
-if (origin.pathname !== '/' || origin.search || origin.hash || (!dev && origin.protocol !== 'https:')) {
-  throw new Error('APP_ORIGIN must be a bare origin with HTTPS in production');
-}
+const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+const origin = new URL(process.env.APP_ORIGIN || (vercelHost ? `https://${vercelHost}` : 'http://127.0.0.1:5173'));
+if (origin.pathname !== '/' || origin.search || origin.hash) throw new Error('APP_ORIGIN must be a bare origin');
 const db = process.env.DATABASE_URL ? connect() : null;
 db?.on('error', error => console.error('Database connection interrupted', error.code));
-if (!dev && (!db || !process.env.DERIV_CLIENT_ID)) throw new Error('DATABASE_URL and DERIV_CLIENT_ID are required');
 const adminIds = new Set((process.env.ADMIN_DERIV_ACCOUNTS || '').split(',').map(id => id.trim()).filter(Boolean));
 const adminLoginName = process.env.KINGZ_ADMIN_NAME || '';
 const adminPasswordSalt = process.env.KINGZ_ADMIN_PASSWORD_SALT || '';
@@ -27,10 +26,15 @@ const DEFAULT_SITE_SETTINGS = {
   regularDays: 0, premiumDays: 0, offerEnabled: false, offerEndsAt: '',
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
 };
-const redirectUri = new URL('/api/deriv/callback', origin).href;
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('base64url');
-const cookie = (name, value, age) => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${origin.protocol === 'https:' ? '; Secure' : ''}`;
+const cookie = (name, value, age, secure = origin.protocol === 'https:') => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${secure ? '; Secure' : ''}`;
+function requestOrigin(req) {
+  const first = value => String(value || '').split(',')[0].trim();
+  const protocol = first(req.headers['x-forwarded-proto']) || origin.protocol.slice(0, -1);
+  const host = first(req.headers['x-forwarded-host']) || first(req.headers.host) || origin.host;
+  return new URL(`${protocol}://${host}`);
+}
 const readCookie = (req, name) => (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(name + '='))?.slice(name.length + 1);
 const key = (req, name) => hash(readCookie(req, name) || '');
 function hasAdminSession(req) {
@@ -98,9 +102,10 @@ async function body(req) {
   }
 }
 
-async function oauth(req, res, url) {
+async function oauth(req, res, url, requestBase) {
   const clientId = process.env.DERIV_CLIENT_ID;
   if (!clientId) return redirect(res, '/?login=setup');
+  const redirectUri = new URL('/api/deriv/callback', requestBase).href;
   if (url.pathname.endsWith('/start')) {
     const id = random();
     const state = random();
@@ -111,9 +116,9 @@ async function oauth(req, res, url) {
     const auth = new URL('https://auth.deriv.com/oauth2/auth');
     auth.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri,
       response_type: 'code', scope: 'trade', state, code_challenge: hash(verifier), code_challenge_method: 'S256' });
-    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300)]);
+    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300, requestBase.protocol === 'https:')]);
   }
-  const clear = [cookie('bfx_oauth', '', 0)];
+  const clear = [cookie('bfx_oauth', '', 0, requestBase.protocol === 'https:')];
   const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier,return_to', [key(req, 'bfx_oauth')]);
   if (!attempt || attempt.state !== url.searchParams.get('state')) return redirect(res, '/?login=invalid', clear);
   if (url.searchParams.has('error') || !url.searchParams.get('code')) return redirect(res, '/?login=denied', clear);
@@ -137,7 +142,7 @@ async function oauth(req, res, url) {
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
     [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
-    return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds)]);
+    return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
     return redirect(res, '/?login=failed', clear);
@@ -180,7 +185,8 @@ async function live(res, id) {
 async function api(req, res, url) {
   const path = url.pathname;
   const method = req.method;
-  if (method === 'POST' && req.headers.origin !== origin.origin) throw error(403, 'Invalid request origin.');
+  const requestBase = requestOrigin(req);
+  if (method === 'POST' && req.headers.origin !== requestBase.origin) throw error(403, 'Invalid request origin.');
   if (method === 'GET' && path === '/api/markets') return json(res, 200, db ? await markets() : []);
   if (method === 'GET' && path === '/api/settings') return json(res, 200, await siteSettings());
   if (method === 'POST' && path === '/api/admin/login') {
@@ -198,18 +204,18 @@ async function api(req, res, url) {
     }
     loginFailures.delete(client);
     const session = newAdminSession();
-    res.setHeader('Set-Cookie', cookie('bfx_admin', session.value, session.seconds));
+    res.setHeader('Set-Cookie', cookie('bfx_admin', session.value, session.seconds, requestBase.protocol === 'https:'));
     return json(res, 200, { ok: true });
   }
   const passwordAdmin = hasAdminSession(req);
   if (method === 'GET' && path === '/api/me' && !db) return json(res, 200, { ready: false, admin: passwordAdmin });
   if (method === 'POST' && path === '/api/logout' && !db && passwordAdmin) {
-    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0), cookie('bfx_admin', '', 0)]);
+    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0, requestBase.protocol === 'https:'), cookie('bfx_admin', '', 0, requestBase.protocol === 'https:')]);
     return json(res, 200, {});
   }
   if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
   if (!db) throw error(503, 'The service is awaiting setup.');
-  if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url);
+  if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url, requestBase);
   const id = key(req, 'bfx_session');
   if (method === 'GET' && path === '/api/stream') return live(res, id);
   const state = await memberState(id);
@@ -223,7 +229,7 @@ async function api(req, res, url) {
   }
   if (method === 'POST' && path === '/api/logout') {
     if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);
-    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0), cookie('bfx_admin', '', 0)]);
+    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0, requestBase.protocol === 'https:'), cookie('bfx_admin', '', 0, requestBase.protocol === 'https:')]);
     return json(res, 200, {});
   }
   if (method === 'POST' && path === '/api/account' && state && !account) {
@@ -233,7 +239,7 @@ async function api(req, res, url) {
     const selected = await one(`UPDATE sessions SET id=$2,account_id=$3 WHERE id=$1 AND expires>now()
       AND account_id IS NULL RETURNING expires`, [id, hash(next), input.account]);
     if (!selected) throw error(409, 'Sign in again to select an account.');
-    res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000))));
+    res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000)), requestBase.protocol === 'https:'));
     return json(res, 200, {});
   }
   if (!account && !admin) throw error(401, 'Sign in with Deriv.');
@@ -313,6 +319,11 @@ async function api(req, res, url) {
   throw error(404, 'Page unavailable.');
 }
 
+export { api };
+
+async function startServer() {
+if (!dev && (!db || !process.env.DERIV_CLIENT_ID)) throw new Error('DATABASE_URL and DERIV_CLIENT_ID are required');
+if (!dev && origin.protocol !== 'https:') throw new Error('APP_ORIGIN must use HTTPS in production');
 const http = createServer();
 const vite = dev ? await (await import('vite')).createServer({
   server: { middlewareMode: true, hmr: { server: http }, fs: {
@@ -349,3 +360,6 @@ http.on('request', async (req, res) => {
 });
 http.listen(Number(process.env.PORT || 5173), process.env.HOST || (dev ? '127.0.0.1' : '0.0.0.0'),
   () => console.log('BrandyFx listening on ' + origin.origin));
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) await startServer();

@@ -43,9 +43,12 @@ async function api<T>(path: string, value?: object): Promise<T> {
   const response = await fetch('/api/' + path, value === undefined ? {} : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(value),
   });
-  const data = await response.json();
+  const text = await response.text();
+  let data: { error?: string };
+  try { data = JSON.parse(text) as { error?: string }; }
+  catch { throw new Error(`The API returned a non-JSON response (${response.status}). Check the server deployment.`); }
   if (!response.ok) throw new Error(data.error || 'Please try again.');
-  return data;
+  return data as T;
 }
 
 function useMarkets() {
