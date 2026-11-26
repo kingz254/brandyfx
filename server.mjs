@@ -88,6 +88,17 @@ const memberState = id => one(`SELECT s.account_id,s.accounts,s.expires,
 
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw error(415, 'Expected JSON.');
+  if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+    if (Array.isArray(req.body)) throw error(400, 'Invalid request.');
+    return req.body;
+  }
+  if (typeof req.body === 'string') {
+    try {
+      const parsed = JSON.parse(req.body);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw Error();
+      return parsed;
+    } catch { throw error(400, 'Invalid request.'); }
+  }
   let content = '';
   for await (const chunk of req) {
     content += chunk;
