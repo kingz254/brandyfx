@@ -308,7 +308,12 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
     catch { setError('Copy is unavailable here. Select and copy the TRC20 address.'); }
   }
   async function saveOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault(); setError('');
+    if (checkoutSetup.length) {
+      setError(`Checkout is paused: ${checkoutSetup.join(' and ')} in Site settings.`);
+      return;
+    }
+    setBusy(true);
     try {
       const response = await fetch('/api/payment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ package: plan.key, amount, name: form.name, email: form.email, country: form.country, rotNumber: form.rotNumber, transactionHash: form.transactionHash }) });
@@ -336,7 +341,7 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
           <label>Deriv ROT / account number<input autoComplete="off" maxLength={40} value={form.rotNumber} onChange={event => setForm({ ...form, rotNumber: event.target.value })} required /><small>Use the Deriv account ID you will use to sign in.</small></label>
           <label className="purchase-hash">Transaction hash<input autoComplete="off" minLength={64} maxLength={64} pattern="[A-Fa-f0-9]{64}" value={form.transactionHash} onChange={event => setForm({ ...form, transactionHash: event.target.value })} placeholder="64-character TRON transaction hash" required /></label>
           {error && <p className="purchase-error" role="alert">{error}</p>}
-          <button className="purchase-submit" disabled={busy || checkoutSetup.length > 0}>{busy ? 'Saving…' : 'Save details & continue'} <span aria-hidden="true">→</span></button>
+          <button className="purchase-submit" disabled={busy}>{busy ? 'Saving…' : 'Save details & continue'} <span aria-hidden="true">→</span></button>
           {checkoutSetup.length > 0 && <small className="purchase-config-note">Checkout is paused: {checkoutSetup.join(' and ')} in <a href="/kingz.html">Site settings</a>.</small>}
           {!settings.socialWhatsApp && checkoutSetup.length === 0 && <small className="purchase-config-note">Your details can be saved now. WhatsApp proof will be available after a contact link is added in <a href="/kingz.html">Site settings</a>.</small>}
         </form>
