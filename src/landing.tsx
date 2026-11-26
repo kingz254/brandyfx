@@ -363,7 +363,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
 
       <h1 id="landing-title">Read the move.<br />Trade with intent.</h1>
       <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Rise / Fall, Over 6 / Under 3, and Matches / Differs.</p>
-      <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/?preview">See the signal desk</a></div>
+      <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/">See the signal desk</a></div>
       <dl className="landing-facts"><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Market source</dt><dd>Deriv ticks</dd></div><div><dt>Execution</dt><dd>In your hands</dd></div></dl>
     </div>
     <section className="landing-feed" aria-label="Live Deriv market prices">
@@ -403,12 +403,12 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/?preview">Open signal desk <span aria-hidden="true">↗</span></a></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/">Open signal desk <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
     <footer className="landing-footer">
       <section className="footer-brand-block"><a className="landing-brand" href={tabHref('home')}><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></a><p>Deriv signal intelligence for informed decisions.</p><SocialLinks settings={settings} className="site-social-links-footer"/></section>
-      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('free-bots')}>Free Bots</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/?preview">Access terminal</a></nav>
+      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('free-bots')}>Free Bots</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/">Access terminal</a></nav>
       <nav className="footer-link-group" aria-label="Community"><h2>Community</h2><a href={tabHref('reviews')}>Read reviews</a>{socialMeta.filter(({ key }) => key !== 'socialEmail' && socialHref(settings, key)).map(({ key, label }) => <a key={key} href={socialHref(settings, key)} target="_blank" rel="noreferrer">{label}</a>)}<a href={tabHref('contact')}>Contact</a></nav>
       <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
       <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>

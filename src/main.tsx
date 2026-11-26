@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Landing, { PublicSettings } from './landing';
@@ -14,6 +14,7 @@ type ManagementRequest = { id: string | number; name: string; amount: string; st
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
+const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
 const home = route.has('home');
@@ -32,10 +33,11 @@ const defaultSettings: PublicSettings = {
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
   socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
 };
-const fixtureMarkets: Market[] = ['10', '25', '50', '75', '100'].map((index, market) => {
+const fixtureMarkets: Market[] = marketOrder.map((symbol, market) => {
+  const index = symbol.startsWith('1HZ') ? symbol.slice(3, -1) : symbol.slice(2);
   const points = Array.from({ length: 64 }, (_, i) =>
     (1234 + market * 42 + i * 0.36 + Math.sin(i * 0.45) * 4 + Math.cos(i * 1.64) * 1.7).toFixed(2));
-  return { symbol: 'R_' + index, name: 'Volatility ' + index + ' Index', quote: points.at(-1)!, points, updated: until(0), live: true };
+  return { symbol, name: `Volatility ${index}${symbol.startsWith('1HZ') ? ' (1s)' : ''} Index`, quote: points.at(-1)!, points, updated: until(0), live: true };
 });
 const fixtureSignals: Signal[] = [
   ['trend', 'Rise', null], ['range', 'Over 6', 6], ['digit', 'Matches', 4],
@@ -91,97 +93,48 @@ function Ribbon({ markets }: { markets: Market[] }) {
   </div>;
 }
 
-function Chart({ points }: { points: string[] }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    const chart = canvas;
-    const ctx = context;
-    function draw() {
-      const { width, height } = chart.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-      chart.width = Math.round(width * ratio);
-      chart.height = Math.round(height * ratio);
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      const style = getComputedStyle(chart);
-      const ink = style.getPropertyValue('--line').trim();
-      const emerald = style.getPropertyValue('--emerald').trim();
-      ctx.strokeStyle = ink;
-      ctx.lineWidth = 1;
-      for (let y = 18; y < height; y += (height - 20) / 4) {
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-      }
-      if (points.length < 2) return;
-      const values = points.map(Number);
-      const low = Math.min(...values);
-      const range = Math.max(...values) - low || 1;
-      const coordinates = values.map((value, i) => [
-        3 + i * (width - 10) / (values.length - 1), height - 19 - (value - low) * (height - 36) / range,
-      ]);
-      ctx.beginPath();
-      coordinates.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
-      ctx.strokeStyle = emerald; ctx.lineWidth = 2; ctx.stroke();
-      const [x, y] = coordinates.at(-1)!;
-      ctx.lineTo(x, height); ctx.lineTo(3, height); ctx.closePath();
-      const fill = ctx.createLinearGradient(0, 0, 0, height);
-      fill.addColorStop(0, style.getPropertyValue('--chart-fill').trim());
-      fill.addColorStop(1, style.getPropertyValue('--chart-clear').trim());
-      ctx.fillStyle = fill; ctx.fill();
-      ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fillStyle = emerald; ctx.fill();
-    }
-    draw();
-    const observer = new ResizeObserver(draw);
-    observer.observe(canvas);
-    return () => observer.disconnect();
-  }, [points]);
-  return <canvas ref={ref} role="img" aria-label={points.length ? 'Recent market price movement' : 'Market chart waiting for ticks'} />;
-}
-
 function Desk({ markets, signals, connected }: { markets: Market[]; signals: Signal[]; connected: boolean }) {
-  const [selected, select] = useState('R_50');
   const [family, setFamily] = useState<string>('trend');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const market = markets.find(item => item.symbol === selected) || markets[0];
-  const feed = signals.filter(item => item.symbol === market?.symbol && item.family === family);
-  const live = connected && market?.live;
-  const signal = live ? feed.find(item => +new Date(item.expires) > clock) : undefined;
-  return <main className="desk">
-    <aside className="rail" aria-label="Markets"><h2>Markets</h2>
-      {markets.map(item => <button key={item.symbol} title={item.symbol} aria-pressed={item.symbol === market?.symbol} onClick={() => select(item.symbol)}>
-        <span className="market-glyph" aria-hidden="true">{item.symbol.match(/\d+/)?.[0] ?? '∿'}</span>
-        <span className="market-name">{name(item)}</span>
-      </button>)}
-      {!markets.length && <p>Waiting for markets.</p>}
-    </aside>
+  const columns = family === 'trend' ? ['Rise', 'Fall'] : family === 'range' ? ['Over 6', 'Under 3'] : ['Matches', 'Differs'];
+  const rankMarket = (symbol: string) => { const index = marketOrder.indexOf(symbol); return index < 0 ? marketOrder.length : index; };
+  const orderedMarkets = [...markets].sort((a, b) => rankMarket(a.symbol) - rankMarket(b.symbol));
+  const latest = new Map<string, Signal>();
+  for (const signal of signals) {
+    if (signal.family !== family || +new Date(signal.expires) <= clock) continue;
+    const current = latest.get(signal.symbol);
+    if (!current || +new Date(signal.issued) > +new Date(current.issued)) latest.set(signal.symbol, signal);
+  }
+  const activeFamily = families.find(([id]) => id === family)?.[1] || families[0][1];
+  return <main className="desk desk-table-page">
     <section className="desk-main">
-      <div className="desk-heading"><div><h1>Signals desk</h1><p>{market?.name || 'Market feed'}</p></div>
-        <span className={live ? 'status live' : 'status'}>{preview ? 'Sample feed' : live ? 'Feed live' : 'Reconnecting'}</span></div>
-      <div className="tabs" aria-label="Signal family">{families.map(([id, label]) => <button key={id}
+      <div className="desk-heading"><div><p className="landing-kicker">DERIV · LIVE SIGNAL FEED</p><h1>Signals desk</h1><p>Live setups across the volatility markets.</p></div>
+        <span className={connected && orderedMarkets.some(item => item.live) ? 'status live' : 'status'}>{preview ? 'Sample feed' : connected ? 'Feed live' : 'Reconnecting'}</span></div>
+      <div className="tabs" role="group" aria-label="Signal family">{families.map(([id, label]) => <button key={id} type="button"
         aria-pressed={family === id} onClick={() => setFamily(id)}>{label}</button>)}</div>
-      <div className="desk-panels">
-        <div className="active" aria-live="polite">
-          <div className="signal-content" key={signal?.id ?? family}>
-            <div><p>Current signal</p><h2>{signal ? signal.label : live ? 'Watching for a setup' : 'Waiting for fresh ticks'}</h2></div>
-            {signal && <div className="signal-time"><strong aria-hidden="true">{signal.digit ?? (signal.label === 'Rise' ? '↑' : '↓')}</strong><small>Expires {stamp(signal.expires)}</small></div>}
-          </div>
-        </div>
-        <div className="chart-panel"><div><h2>Price movement</h2><strong key={market?.quote}>{market?.quote || '–'}</strong></div>
-          <Chart points={market?.points || []} />
-          <div className="chart-caption"><span>Recent ticks</span><span>{market?.updated ? stamp(market.updated) : 'Waiting for data'}</span></div>
-        </div>
-        <aside className="history"><h2>Signal history</h2>
-          {feed.length ? <ol>{feed.map(item => <li key={item.id}><span>{item.label}{item.digit !== null && item.family === 'digit' ? ' ' + item.digit : ''}
-            <small>{stamp(item.issued)}</small></span><span className="history-state">{+new Date(item.expires) <= clock ? 'Expired' : 'Open'}</span></li>)}</ol>
-            : <p>Signals for this market and family will appear here.</p>}
-        </aside>
+      <div className="signal-table-shell" role="region" aria-label={`${activeFamily} signals`} tabIndex={0}>
+        <table className="signal-table"><caption>{activeFamily} signals by market</caption>
+          <thead><tr><th scope="col">Market</th>{columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Live price</th></tr></thead>
+          <tbody>{orderedMarkets.map(market => {
+            const signal = connected && market.live ? latest.get(market.symbol) : undefined;
+            return <tr key={market.symbol}>
+              <th scope="row">{market.name}</th>
+              {columns.map(column => {
+                const matches = signal?.label === column;
+                const label = matches && signal?.family === 'digit' && signal.digit !== null ? `${column} ${signal.digit}` : column;
+                return <td key={column}><span className={`signal-result${matches ? ' signal-result-live' : ''}`} aria-label={matches ? `${label} signal` : 'No current signal'}>{matches ? label : '----'}</span></td>;
+              })}
+              <td className="signal-price"><strong>{market.quote || '–'}</strong><small>{connected && market.live && market.updated ? stamp(market.updated) : 'Waiting for ticks'}</small></td>
+            </tr>;
+          })}</tbody>
+        </table>
+        {!orderedMarkets.length && <p className="desk-wait" role="status">Waiting for Deriv market data.</p>}
       </div>
+      <p className="signal-disclaimer">Signals are informational examples for your own review. A signal is not a trade instruction or a promise of a result.</p>
     </section>
   </main>;
 }
