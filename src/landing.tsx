@@ -20,6 +20,19 @@ const faqs = [
   ['How do I get access?', 'Sign in with Deriv when authentication is enabled, then review the access offer and payment instructions shown in your account.'],
 ];
 
+const reviewExamples = [
+  { text: 'Having live volatility prices beside the signal feed makes the market context easier to follow.', country: 'Kenya', countryCode: 'ke' },
+  { text: 'The signal families are easy to compare, and I can stay focused on the market I selected.', country: 'Nigeria', countryCode: 'ng' },
+  { text: 'I like that each setup is presented as information and leaves the trade decision with me.', country: 'Ghana', countryCode: 'gh' },
+  { text: 'The recent signal history gives me a useful place to review what happened during a session.', country: 'South Africa', countryCode: 'za' },
+  { text: 'Moving between Rise / Fall and digit signals feels clear without losing the market context.', country: 'Kenya', countryCode: 'ke' },
+  { text: 'The risk reminders are a helpful nudge to slow down and stick to my own limits.', country: 'Nigeria', countryCode: 'ng' },
+  { text: 'The live feed and the signal desk belong together. I can check both without jumping around.', country: 'Ghana', countryCode: 'gh' },
+  { text: 'I can see which volatility market is connected before I decide what to look at next.', country: 'South Africa', countryCode: 'za' },
+  { text: 'It is useful to have Matches / Differs and Over 6 / Under 3 grouped in the same workspace.', country: 'Kenya', countryCode: 'ke' },
+  { text: 'The layout keeps the signal, current price and history in view while I review a setup.', country: 'Nigeria', countryCode: 'ng' },
+];
+
 export default function Landing({ markets }: { markets: MarketSample[] }) {
   const shownMarkets = markets.slice(0, 5);
   return <main className="landing">
@@ -32,6 +45,7 @@ export default function Landing({ markets }: { markets: MarketSample[] }) {
         <a href="#intelligence">Intelligence</a>
         <a href="#process">How it works</a>
         <a href="#challenge">Challenge</a>
+        <a href="#reviews">Read reviews</a>
         <a href="#pricing">Pricing</a>
         <a href="#faq">FAQ</a>
       </nav>
@@ -121,15 +135,21 @@ export default function Landing({ markets }: { markets: MarketSample[] }) {
       </div>
     </section>
 
-    <section className="landing-section voices-section" aria-labelledby="voices-title">
+    <section className="landing-section reviews-section" id="reviews" aria-labelledby="reviews-title">
       <div className="landing-section-heading">
-        <p className="landing-kicker">Inside the signal desk</p>
-        <h2 id="voices-title">Focused on the<br />parts that matter.</h2>
+        <div>
+          <p className="landing-kicker">Trader stories</p>
+          <h2 id="reviews-title">Notes from the<br />community.</h2>
+          <p className="reviews-intro">A sample of how country-tagged BrandyFx feedback will appear.</p>
+        </div>
+        <span className="review-sample-label">Fictional sample reviews</span>
       </div>
-      <div className="voice-grid">
-        <article><span>Market focus</span><p>Follow Deriv volatility indices through one live price feed, with availability reflected directly by the market connection.</p><small>V10 · V25 · V50 · V75 · V100</small></article>
-        <article><span>Signal families</span><p>Move between directional and last-digit setups without losing the market and expiry context around each signal.</p><small>Rise / Fall · Over 6 / Under 3 · Matches / Differs</small></article>
-        <article><span>Trader control</span><p>Use signals as information. You choose whether to trade, the stake and the limits for every session.</p><small>No signal guarantees an outcome</small></article>
+      <div className="review-wall">
+        {reviewExamples.map((review, index) => <article className={`review-card review-v${(index % 7) + 1}`} key={`${review.country}-${index}`}>
+          <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><span className="review-count">{String(index + 1).padStart(2, '0')}</span></div>
+          <p className="review-copy">{review.text}</p>
+          <div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>Sample trader</b><small>{review.country}</small></span></div>
+        </article>)}
       </div>
     </section>
 
