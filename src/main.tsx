@@ -13,7 +13,7 @@ type Order = Payment & { account_id: string; reference: string; amount: string; 
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
-const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
+const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
 const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
@@ -27,7 +27,7 @@ const defaultSettings: PublicSettings = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: .5, glassOpacity: .72,
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerActive: false, offerEndsAt: '',
-  riseFallPrice: 300, riseFallOffer: 200, riseFallDays: 0,
+  evenOddPrice: 300, evenOddOffer: 200, evenOddDays: 0,
   overUnderPrice: 300, overUnderOffer: 200, overUnderDays: 0,
   matchesPrice: 450, matchesOffer: 300, matchesDays: 0,
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
@@ -40,8 +40,8 @@ const fixtureMarkets: Market[] = marketOrder.map((symbol, market) => {
   return { symbol, name: `Volatility ${index}${symbol.startsWith('1HZ') ? ' (1s)' : ''} Index`, quote: points.at(-1)!, points, updated: until(0), live: true };
 });
 const fixtureSignals: Signal[] = [
-  ['trend', 'Rise', null], ['range', 'Over 6', 6], ['digit', 'Matches', 4],
-  ['trend', 'Fall', null], ['trend', 'Rise', null], ['trend', 'Fall', null],
+  ['evenOdd', 'Even', null], ['range', 'Over 6', 6], ['digit', 'Matches', 4],
+  ['evenOdd', 'Odd', null], ['evenOdd', 'Even', null], ['evenOdd', 'Odd', null],
 ].map(([family, label, digit], i) => ({
   id: i + 1, symbol: 'R_50', family: String(family), label: String(label), digit: digit as number | null,
   issued: until(-i * 72000), expires: until(i < 3 ? 3600000 : -i * 72000 + 30000),
@@ -94,13 +94,13 @@ function Ribbon({ markets }: { markets: Market[] }) {
 }
 
 function Desk({ markets, signals, connected }: { markets: Market[]; signals: Signal[]; connected: boolean }) {
-  const [family, setFamily] = useState<string>('trend');
+  const [family, setFamily] = useState<string>('evenOdd');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const columns = family === 'trend' ? ['Rise', 'Fall'] : family === 'range' ? ['Over 6', 'Under 3'] : ['Matches', 'Differs'];
+  const columns = family === 'evenOdd' ? ['Even', 'Odd'] : family === 'range' ? ['Over 6', 'Under 3'] : ['Matches', 'Differs'];
   const rankMarket = (symbol: string) => { const index = marketOrder.indexOf(symbol); return index < 0 ? marketOrder.length : index; };
   const orderedMarkets = [...markets].sort((a, b) => rankMarket(a.symbol) - rankMarket(b.symbol));
   const latest = new Map<string, Signal>();
@@ -141,7 +141,7 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
 
 function Access({ member }: { member: Member }) {
   const payment = member.payment;
-  const planNames: Record<string, string> = { riseFall: 'Rise / Fall · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
+  const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
   const status = member.passUntil ? 'Pass active' : payment?.revoked_at ? 'Pass revoked' :
     payment?.status === 'pending' ? 'Payment awaiting review' : payment?.status === 'approved' ? 'Pass expired' :
       payment?.status === 'declined' ? 'Request declined' : 'Deriv connected';
@@ -214,7 +214,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
     <form className="site-settings-form" onSubmit={async event => {
       event.preventDefault(); setBusy(true); setSaved(''); setError('');
       const raw = Object.fromEntries(new FormData(event.currentTarget));
-      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), riseFallPrice: Number(raw.riseFallPrice), riseFallOffer: Number(raw.riseFallOffer), riseFallDays: Number(raw.riseFallDays), overUnderPrice: Number(raw.overUnderPrice), overUnderOffer: Number(raw.overUnderOffer), overUnderDays: Number(raw.overUnderDays), matchesPrice: Number(raw.matchesPrice), matchesOffer: Number(raw.matchesOffer), matchesDays: Number(raw.matchesDays), offerEnabled: raw.offerEnabled === 'on' };
+      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), evenOddPrice: Number(raw.evenOddPrice), evenOddOffer: Number(raw.evenOddOffer), evenOddDays: Number(raw.evenOddDays), overUnderPrice: Number(raw.overUnderPrice), overUnderOffer: Number(raw.overUnderOffer), overUnderDays: Number(raw.overUnderDays), matchesPrice: Number(raw.matchesPrice), matchesOffer: Number(raw.matchesOffer), matchesDays: Number(raw.matchesDays), offerEnabled: raw.offerEnabled === 'on' };
       try { const result = await api<PublicSettings>('admin/site-settings', payload); onSaved(result); setSaved('Settings saved.'); }
       catch (cause) { setError((cause as Error).message); }
       finally { setBusy(false); }
@@ -224,7 +224,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
         <div className="admin-field-grid"><label>Video opacity <output>{Math.round(settings.videoOpacity * 100)}%</output><input name="videoOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.videoOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label>
           <label>Glass opacity <output>{Math.round(settings.glassOpacity * 100)}%</output><input name="glassOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.glassOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label></div>
       </section>
-      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{([{ key: 'riseFall', label: 'Rise / Fall' }, { key: 'overUnder', label: 'Over 6 / Under 3' }, { key: 'matches', label: 'Matches only' }] as const).map(({ key, label }) => <fieldset key={key}><legend>{label}</legend><label>Standard price (USD)<input name={`${key}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Price`]} required/></label><label>Offer price (USD)<input name={`${key}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Offer`]} required/></label><label>Access days<input name={`${key}Days`} type="number" min="0" max="365" defaultValue={settings[`${key}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
+      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{([{ key: 'evenOdd', label: 'Even / Odd' }, { key: 'overUnder', label: 'Over 6 / Under 3' }, { key: 'matches', label: 'Matches only' }] as const).map(({ key, label }) => <fieldset key={key}><legend>{label}</legend><label>Standard price (USD)<input name={`${key}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Price`]} required/></label><label>Offer price (USD)<input name={`${key}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Offer`]} required/></label><label>Access days<input name={`${key}Days`} type="number" min="0" max="365" defaultValue={settings[`${key}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
         <label className="admin-check"><input name="offerEnabled" type="checkbox" defaultChecked={settings.offerActive}/> Enable launch offer</label>
         <div className="admin-field-grid"><label>Offer end date/time<input name="offerEndsAt" type="datetime-local" defaultValue={settings.offerEndsAt ? new Date(settings.offerEndsAt).toISOString().slice(0, 16) : ''}/></label><label>Promotion heading<input name="promoHeading" maxLength={90} defaultValue={settings.promoHeading} required/></label></div>
         <label>Promotion subheading<input name="promoSubheading" maxLength={140} defaultValue={settings.promoSubheading} required/></label>
@@ -254,7 +254,7 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
-  const planNames: Record<string, string> = { riseFall: 'Rise / Fall · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
+  const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
   return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client orders</p><h2>Payment records</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
     <p className="admin-panel-note">Verify each TRC20 transaction hash before approving access. The selected package determines its term and signal entitlement.</p>
     {loadError && <p className="admin-message error" role="alert">{loadError}</p>}

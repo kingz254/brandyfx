@@ -18,19 +18,26 @@ CREATE TABLE IF NOT EXISTS site_settings (
 );
 INSERT INTO site_settings(id,settings) VALUES(true,'{"backgroundUrl":"/media/brandyfx-background.mp4","videoOpacity":0.5,"glassOpacity":0.72,"regularPrice":300,"premiumPrice":450,"regularOffer":200,"premiumOffer":300,"regularDays":0,"premiumDays":0,"offerEnabled":false,"offerEndsAt":"","promoHeading":"Don''t miss your chance","promoSubheading":"Grants up to 20% off","trc20Wallet":""}'::jsonb)
 ON CONFLICT(id) DO NOTHING;
-UPDATE site_settings SET settings='{"riseFallPrice":300,"riseFallOffer":200,"riseFallDays":0,"overUnderPrice":300,"overUnderOffer":200,"overUnderDays":0,"matchesPrice":450,"matchesOffer":300,"matchesDays":0}'::jsonb || settings WHERE id=true;
+UPDATE site_settings SET settings=(settings - 'riseFallPrice' - 'riseFallOffer' - 'riseFallDays') || jsonb_build_object(
+  'evenOddPrice',COALESCE(settings->'evenOddPrice',settings->'riseFallPrice','300'::jsonb),
+  'evenOddOffer',COALESCE(settings->'evenOddOffer',settings->'riseFallOffer','200'::jsonb),
+  'evenOddDays',COALESCE(settings->'evenOddDays',settings->'riseFallDays','0'::jsonb)
+) WHERE id=true;
+UPDATE site_settings SET settings='{"evenOddPrice":300,"evenOddOffer":200,"evenOddDays":0,"overUnderPrice":300,"overUnderOffer":200,"overUnderDays":0,"matchesPrice":450,"matchesOffer":300,"matchesDays":0}'::jsonb || settings WHERE id=true;
 CREATE TABLE IF NOT EXISTS payments (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, account_id text NOT NULL,
   reference text NOT NULL UNIQUE, status text NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'approved', 'declined')),
   created timestamptz NOT NULL DEFAULT now(),
   amount numeric(12,2) NOT NULL, currency text NOT NULL, days integer NOT NULL,
-  package text NOT NULL DEFAULT 'riseFall' CHECK(package IN ('regular','premium','riseFall','overUnder','matches')),
+  package text NOT NULL DEFAULT 'evenOdd' CHECK(package IN ('regular','premium','evenOdd','overUnder','matches')),
   reviewed_by text, reviewed_at timestamptz, expires timestamptz, revoked_at timestamptz
 );
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'regular';
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_package_check;
-ALTER TABLE payments ADD CONSTRAINT payments_package_check CHECK(package IN ('regular','premium','riseFall','overUnder','matches'));
+UPDATE payments SET package='evenOdd' WHERE package='riseFall';
+ALTER TABLE payments ALTER COLUMN package SET DEFAULT 'evenOdd';
+ALTER TABLE payments ADD CONSTRAINT payments_package_check CHECK(package IN ('regular','premium','evenOdd','overUnder','matches'));
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_name text NOT NULL DEFAULT '';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_email text NOT NULL DEFAULT '';
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_country text NOT NULL DEFAULT '';

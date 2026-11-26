@@ -12,9 +12,9 @@ export type PublicSettings = {
   premiumOffer: number;
   regularDays: number;
   premiumDays: number;
-  riseFallPrice: number;
-  riseFallOffer: number;
-  riseFallDays: number;
+  evenOddPrice: number;
+  evenOddOffer: number;
+  evenOddDays: number;
   overUnderPrice: number;
   overUnderOffer: number;
   overUnderDays: number;
@@ -73,7 +73,7 @@ function SocialLinks({ settings, className = '' }: { settings: PublicSettings; c
 }
 
 const freeBots = [
-  { name: 'Mavic Rise/Fall', category: 'Rise / Fall', description: 'Rise/Fall strategy preset. Review duration, stake and limits before running.', file: 'mavic-air-rise-fall.xml', fxproFile: 'Mavic-Air-RF Vix Bot.xml' },
+  { name: 'Alternate Even-Odd', category: 'Even / Odd', description: 'Alternates Even and Odd contracts. Review the entry conditions, stake and limits before running.', file: 'alternate-even-odd.xml', fxproFile: 'Alternate Even-Odd.xml' },
   { name: 'Turbo O/U', category: 'Over / Under', description: 'Over/Under strategy preset with configurable stake progression.', file: 'turbo-over-under.xml', fxproFile: 'Turbo O_U Accelerator.xml' },
   { name: 'Core Bot V3', category: 'Matches / Differs', description: 'Core strategy preset with a Matches/Differs contract. Inspect conditions and money management.', file: 'core-bot-v3.xml', fxproFile: 'Core Bot V3.xml' },
   { name: 'One-Tick Over 2', category: 'Digit Over', description: 'One-tick digit-over preset with its threshold set in the bot configuration.', file: 'one-tick-over-2.xml', fxproFile: '1 tick DIgit Over 2.xml' },
@@ -86,7 +86,7 @@ const freeBots = [
 ];
 
 const planCards = [
-  { key: 'riseFall', title: 'Rise / Fall', tier: 'REGULAR ACCESS', name: 'Rise / Fall Desk', description: 'Access focused on directional Rise/Fall signals.', bot: 'Mavic Rise/Fall', highlight: 'Directional signals', vip: false },
+  { key: 'evenOdd', title: 'Even / Odd', tier: 'REGULAR ACCESS', name: 'Even / Odd Desk', description: 'Access focused on Even and Odd digit signals.', bot: 'Alternate Even-Odd', highlight: 'Parity signals', vip: false },
   { key: 'overUnder', title: 'Over 6 / Under 3', tier: 'REGULAR ACCESS', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', bot: 'Turbo O/U', highlight: 'Digit thresholds', vip: false },
   { key: 'matches', title: 'Matches only', tier: 'PREMIUM · V.I.P ONLY', name: 'Matches V.I.P. Desk', description: 'Exclusive Matches signals with the BrandyFx V.I.P. support circle.', bot: 'Core Bot V3', highlight: 'Matches signals', vip: true },
 ] as const;
@@ -100,7 +100,7 @@ const steps = [
 const faqs = [
   ['Is signal accuracy guaranteed?', 'No. Signals are not guarantees of profit. Market conditions change, and you can lose some or all of the money you trade. Use the feed as information and make your own decisions.'],
   ['Which Deriv markets are covered?', 'BrandyFx follows Deriv volatility indices including V10, V25, V50, V75 and V100, subject to live market availability.'],
-  ['Which signal families are available?', 'Rise / Fall, Over 6 / Under 3 and Matches / Differs.'],
+  ['Which signal families are available?', 'Even / Odd, Over 6 / Under 3 and Matches / Differs.'],
   ['Do I need trading experience?', 'Familiarity with Deriv helps. Take time to understand the contract you choose and how its stake and duration affect your risk.'],
   ['How do I get access?', 'Sign in with Deriv, choose an access plan and follow the TRC20 payment instructions. Your payment reference is reviewed before access is granted.'],
 ];
@@ -123,7 +123,7 @@ const reviewCopy = [
   'I can compare the signal families without losing track of the selected market.',
   'It helps to have the current quote close to the signal history.',
   'The risk reminders make the product limits clear while I explore the desk.',
-  'The page keeps Rise / Fall and digit setups easy to scan.',
+  'The page keeps Even / Odd and digit setups easy to scan.',
   'I can check the market first and make my own decision about any trade.',
   'The market and expiry details are easy to find when I review a setup.',
   'It is useful to see the signal family beside the latest price.',
@@ -362,7 +362,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     <div className="landing-hero-copy">
 
       <h1 id="landing-title">Read the move.<br />Trade with intent.</h1>
-      <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Rise / Fall, Over 6 / Under 3, and Matches / Differs.</p>
+      <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Even / Odd, Over 6 / Under 3, and Matches / Differs.</p>
       <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/">See the signal desk</a></div>
       <dl className="landing-facts"><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Market source</dt><dd>Deriv ticks</dd></div><div><dt>Execution</dt><dd>In your hands</dd></div></dl>
     </div>

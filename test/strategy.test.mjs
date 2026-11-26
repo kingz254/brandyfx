@@ -9,11 +9,12 @@ test('formats the published tick precision before calculating the last digit', (
   assert.equal(formatTick(10, -1), null);
 });
 
-test('warms up and detects both Pipforge trend directions', () => {
-  const rising = Array.from({ length: 255 }, (_, i) => (10 + i / 100).toFixed(2));
-  assert.deepEqual(evaluate(rising.slice(1)), []);
-  assert.ok(evaluate(rising).some(signal => signal.label === 'Rise'));
-  assert.ok(evaluate(rising.reverse()).some(signal => signal.label === 'Fall'));
+test('warms up and detects even and odd digit imbalance', () => {
+  const even = Array.from({ length: 255 }, (_, i) => `101.${i % 10 < 8 ? '2' : '1'}`);
+  const odd = Array.from({ length: 255 }, (_, i) => `101.${i % 10 < 8 ? '1' : '2'}`);
+  assert.deepEqual(evaluate(even.slice(1)), []);
+  assert.ok(evaluate(even).some(signal => signal.family === 'evenOdd' && signal.label === 'Even'));
+  assert.ok(evaluate(odd).some(signal => signal.family === 'evenOdd' && signal.label === 'Odd'));
 });
 
 test('detects the requested digit barriers and matches/differs preview rules', () => {
@@ -27,7 +28,7 @@ test('detects the requested digit barriers and matches/differs preview rules', (
 test('drops overlapping ticks and resets the strategy on feed gaps', () => {
   const market = { precision: 2, epoch: -1, quotes: [] };
   for (let i = 0; i < 255; i++) assert.ok(appendTick(market, i, i));
-  assert.ok(evaluate(market.quotes).some(signal => signal.label === 'Rise'));
+  assert.ok(evaluate(market.quotes).some(signal => signal.family === 'evenOdd' && signal.label === 'Even'));
   assert.equal(appendTick(market, 254, 0), false);
   assert.equal(appendTick(market, 253, 0), false);
   assert.ok(appendTick(market, 300, 452.5));

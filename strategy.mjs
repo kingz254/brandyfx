@@ -1,4 +1,4 @@
-export const VERSION = 'pipforge-preview-1';
+export const VERSION = 'brandyfx-even-odd-1';
 export const WINDOW = 255;
 
 export function formatTick(quote, precision) {
@@ -17,26 +17,20 @@ export function appendTick(market, epoch, raw) {
   return true;
 }
 
-function trend(quotes) {
-  let up = 0;
-  let down = 0;
-  for (let i = 1; i < quotes.length; i++) {
-    if (quotes[i] > quotes[i - 1]) up++;
-    if (quotes[i] < quotes[i - 1]) down++;
-  }
-  const total = up + down || 1;
-  return [up / total, down / total];
+function parity(quotes) {
+  const counts = [0, 0];
+  for (const quote of quotes) counts[Number(quote.at(-1)) % 2]++;
+  return counts.map(count => count / quotes.length);
 }
 
 export function evaluate(quotes) {
   if (quotes.length < WINDOW) return [];
   const window = quotes.slice(-WINDOW);
-  const values = window.map(Number);
-  const long = trend(values);
-  const short = trend(values.slice(-55));
   const result = [];
+  const long = parity(window);
+  const short = parity(window.slice(-55));
   const direction = long.findIndex((share, i) => share > 0.57 && short[i] > 0.55);
-  if (direction >= 0) result.push({ family: 'trend', label: ['Rise', 'Fall'][direction], digit: null });
+  if (direction >= 0) result.push({ family: 'evenOdd', label: ['Even', 'Odd'][direction], digit: null });
 
   const counts = Array(10).fill(0);
   for (const quote of window) counts[Number(quote.at(-1))]++;

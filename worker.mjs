@@ -16,7 +16,7 @@ const wanted = new Set([
   '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V',
   ...(process.env.MARKET_SYMBOLS || '').split(',').map(symbol => symbol.trim()).filter(Boolean),
 ]);
-const codes = { trend: ['CALL', 'PUT'], range: ['DIGITOVER', 'DIGITUNDER'], digit: ['DIGITMATCH', 'DIGITDIFF'] };
+const codes = { evenOdd: ['DIGITEVEN', 'DIGITODD'], range: ['DIGITOVER', 'DIGITUNDER'], digit: ['DIGITMATCH', 'DIGITDIFF'] };
 let stopped = false;
 let socket;
 for (const event of ['SIGINT', 'SIGTERM']) process.on(event, () => {

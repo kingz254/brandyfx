@@ -24,7 +24,7 @@ const DEFAULT_SITE_SETTINGS = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: 0.5, glassOpacity: 0.72,
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerEnabled: false, offerEndsAt: '',
-  riseFallPrice: 300, riseFallOffer: 200, riseFallDays: 0,
+  evenOddPrice: 300, evenOddOffer: 200, evenOddDays: 0,
   overUnderPrice: 300, overUnderOffer: 200, overUnderDays: 0,
   matchesPrice: 450, matchesOffer: 300, matchesDays: 0,
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
@@ -80,7 +80,7 @@ async function siteSettings() {
   return { backgroundUrl: settings.backgroundUrl, videoOpacity: settings.videoOpacity, glassOpacity: settings.glassOpacity,
     regularPrice: settings.regularPrice, premiumPrice: settings.premiumPrice, regularOffer: settings.regularOffer,
     premiumOffer: settings.premiumOffer, regularDays: settings.regularDays, premiumDays: settings.premiumDays,
-    riseFallPrice: settings.riseFallPrice, riseFallOffer: settings.riseFallOffer, riseFallDays: settings.riseFallDays,
+    evenOddPrice: settings.evenOddPrice, evenOddOffer: settings.evenOddOffer, evenOddDays: settings.evenOddDays,
     overUnderPrice: settings.overUnderPrice, overUnderOffer: settings.overUnderOffer, overUnderDays: settings.overUnderDays,
     matchesPrice: settings.matchesPrice, matchesOffer: settings.matchesOffer, matchesDays: settings.matchesDays,
     offerActive: Boolean(settings.offerEnabled && Number.isFinite(ends) && ends > Date.now()), offerEndsAt: settings.offerEndsAt,
@@ -270,16 +270,16 @@ async function api(req, res, url) {
     const { package: tier, name, email, country, rotNumber } = input;
     const reference = input.transactionHash;
     if (typeof reference !== 'string' || !/^[A-Fa-f0-9]{64}$/.test(reference.trim())) throw error(400, 'Enter a valid 64-character TRON transaction hash.');
-    if (!['riseFall', 'overUnder', 'matches'].includes(tier)) throw error(400, 'Choose a valid access plan.');
+    if (!['evenOdd', 'overUnder', 'matches'].includes(tier)) throw error(400, 'Choose a valid access plan.');
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
       typeof country !== 'string' || !country.trim() || country.trim().length > 90 || typeof rotNumber !== 'string' || !/^[A-Za-z0-9-]{3,40}$/.test(rotNumber.trim())) throw error(400, 'Enter your name, a valid email, country and Deriv ROT number.');
     const rot = rotNumber.trim().toUpperCase();
     if (account && rot !== account) throw error(400, 'Use the Deriv account number that is signed in.');
     const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
-          THEN CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
-          ELSE CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
-        CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallDays')::integer WHEN 'overUnder' THEN (settings->>'overUnderDays')::integer ELSE (settings->>'matchesDays')::integer END AS days FROM settings)
+          THEN CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
+          ELSE CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
+        CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddDays')::integer WHEN 'overUnder' THEN (settings->>'overUnderDays')::integer ELSE (settings->>'matchesDays')::integer END AS days FROM settings)
       INSERT INTO payments(account_id,reference,amount,currency,days,package,customer_name,customer_email,customer_country,rot_number)
       SELECT $1,$2,amount,'USDT',days,$3,$4,$5,$6,$1 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
@@ -330,7 +330,7 @@ async function api(req, res, url) {
       validSocialUrl(input.socialTelegram, ['t.me', 'telegram.me']) && validSocialUrl(input.socialInstagram, ['instagram.com']);
     const endTime = input.offerEndsAt === '' ? 0 : new Date(input.offerEndsAt).getTime();
     const offerEndsAt = input.offerEndsAt === '' ? '' : Number.isFinite(endTime) ? new Date(endTime).toISOString() : '';
-    const plans = ['riseFall', 'overUnder', 'matches'];
+    const plans = ['evenOdd', 'overUnder', 'matches'];
     const validPlans = plans.every(plan => price(input[`${plan}Price`]) && price(input[`${plan}Offer`]) && input[`${plan}Offer`] <= input[`${plan}Price`] && days(input[`${plan}Days`]));
     if (!validBackground || !validPlans ||
       typeof input.offerEnabled !== 'boolean' || !['videoOpacity','glassOpacity'].every(key => typeof input[key] === 'number' && input[key] >= 0.1 && input[key] <= 0.9) ||
