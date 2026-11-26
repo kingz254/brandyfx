@@ -267,6 +267,11 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
 function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[number]; settings: PublicSettings; onClose: () => void }) {
   const base = settings[`${plan.key}Price`];
   const amount = settings.offerActive ? settings[`${plan.key}Offer`] : base;
+  const days = settings[`${plan.key}Days`];
+  const checkoutSetup = [
+    !settings.trc20Wallet && 'add a TRC20 wallet address',
+    !days && `set an access term for ${plan.title}`,
+  ].filter(Boolean);
   const [form, setForm] = useState({ name: '', email: '', country: '', rotNumber: '', transactionHash: '' });
   const [orderId, setOrderId] = useState('');
   const [error, setError] = useState('');
@@ -321,8 +326,9 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
           <label>Deriv ROT / account number<input autoComplete="off" maxLength={40} value={form.rotNumber} onChange={event => setForm({ ...form, rotNumber: event.target.value })} required /><small>Use the Deriv account ID you will use to sign in.</small></label>
           <label className="purchase-hash">Transaction hash<input autoComplete="off" minLength={64} maxLength={64} pattern="[A-Fa-f0-9]{64}" value={form.transactionHash} onChange={event => setForm({ ...form, transactionHash: event.target.value })} placeholder="64-character TRON transaction hash" required /></label>
           {error && <p className="purchase-error" role="alert">{error}</p>}
-          <button className="purchase-submit" disabled={busy || !settings.trc20Wallet || !settings.socialWhatsApp || !settings[`${plan.key}Days`]}>{busy ? 'Saving…' : 'Save details & continue'} <span aria-hidden="true">→</span></button>
-          {(!settings.trc20Wallet || !settings.socialWhatsApp || !settings[`${plan.key}Days`]) && <small className="purchase-config-note">Payments open after BrandyFx configures the wallet, WhatsApp contact and access term in site settings.</small>}
+          <button className="purchase-submit" disabled={busy || checkoutSetup.length > 0}>{busy ? 'Saving…' : 'Save details & continue'} <span aria-hidden="true">→</span></button>
+          {checkoutSetup.length > 0 && <small className="purchase-config-note">Checkout is paused: {checkoutSetup.join(' and ')} in <a href="/kingz.html">Site settings</a>.</small>}
+          {!settings.socialWhatsApp && checkoutSetup.length === 0 && <small className="purchase-config-note">Your details can be saved now. WhatsApp proof will be available after a contact link is added in <a href="/kingz.html">Site settings</a>.</small>}
         </form>
       </>}
     </section>
