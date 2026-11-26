@@ -34,7 +34,7 @@ export type PublicSettings = {
 
 const tabs = [
   ['home', 'Home'], ['free-bots', 'Free Bots'], ['process', 'How it works'],
-  ['account-management', 'Account management'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['faq', 'FAQ'],
+  ['account-management', 'Account management'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['refund', 'Refund policy'], ['faq', 'FAQ'],
 ] as const;
 
 type SocialKey = 'socialEmail' | 'socialWhatsApp' | 'socialTelegram' | 'socialInstagram';
@@ -73,16 +73,16 @@ function SocialLinks({ settings, className = '' }: { settings: PublicSettings; c
 }
 
 const freeBots = [
-  { name: 'Mavic Rise/Fall', category: 'Rise / Fall', description: 'Rise/Fall strategy preset. Review duration, stake and limits before running.', file: 'mavic-air-rise-fall.xml' },
-  { name: 'Turbo O/U', category: 'Over / Under', description: 'Over/Under strategy preset with configurable stake progression.', file: 'turbo-over-under.xml' },
-  { name: 'Core Bot V3', category: 'Matches / Differs', description: 'Core strategy preset with a Matches/Differs contract. Inspect conditions and money management.', file: 'core-bot-v3.xml' },
-  { name: 'One-Tick Over 2', category: 'Digit Over', description: 'One-tick digit-over preset with its threshold set in the bot configuration.', file: 'one-tick-over-2.xml' },
-  { name: 'Legacy Over 2026', category: 'Digit Over', description: 'Digit-over preset with configurable prediction and stake progression.', file: 'legacy-over-2026.xml' },
-  { name: 'Ultra Recovery', category: 'Recovery', description: 'Recovery-style preset. Review its stake progression and loss limits before use.', file: 'ultra-recovery.xml' },
-  { name: 'Elite Startrader', category: 'Digit analysis', description: 'Trading preset with digit analysis and configurable prediction settings.', file: 'elite-startrader.xml' },
-  { name: 'Market Legend v2', category: 'General strategy', description: 'General-purpose strategy preset. Inspect contract and risk settings before running.', file: 'market-legend-v2.xml' },
-  { name: 'Godzilla', category: 'Multi-setting', description: 'Multi-setting strategy preset. Review all risk controls in Builder first.', file: 'godzilla.xml' },
-  { name: 'Signals Under', category: 'Digit Under', description: 'Digit-under signal strategy preset with editable threshold settings.', file: 'signals-under.xml' },
+  { name: 'Mavic Rise/Fall', category: 'Rise / Fall', description: 'Rise/Fall strategy preset. Review duration, stake and limits before running.', file: 'mavic-air-rise-fall.xml', fxproFile: 'Mavic-Air-RF Vix Bot.xml' },
+  { name: 'Turbo O/U', category: 'Over / Under', description: 'Over/Under strategy preset with configurable stake progression.', file: 'turbo-over-under.xml', fxproFile: 'Turbo O_U Accelerator.xml' },
+  { name: 'Core Bot V3', category: 'Matches / Differs', description: 'Core strategy preset with a Matches/Differs contract. Inspect conditions and money management.', file: 'core-bot-v3.xml', fxproFile: 'Core Bot V3.xml' },
+  { name: 'One-Tick Over 2', category: 'Digit Over', description: 'One-tick digit-over preset with its threshold set in the bot configuration.', file: 'one-tick-over-2.xml', fxproFile: '1 tick DIgit Over 2.xml' },
+  { name: 'Legacy Over 2026', category: 'Digit Over', description: 'Digit-over preset with configurable prediction and stake progression.', file: 'legacy-over-2026.xml', fxproFile: 'Legacy 2026 Over.xml' },
+  { name: 'Ultra Recovery', category: 'Recovery', description: 'Recovery-style preset. Review its stake progression and loss limits before use.', file: 'ultra-recovery.xml', fxproFile: 'Ultra Recovery.xml' },
+  { name: 'Elite Startrader', category: 'Digit analysis', description: 'Trading preset with digit analysis and configurable prediction settings.', file: 'elite-startrader.xml', fxproFile: 'Elite Startrader.xml' },
+  { name: 'Market Legend v2', category: 'General strategy', description: 'General-purpose strategy preset. Inspect contract and risk settings before running.', file: 'market-legend-v2.xml', fxproFile: 'Market Legend v2.xml' },
+  { name: 'Godzilla', category: 'Multi-setting', description: 'Multi-setting strategy preset. Review all risk controls in Builder first.', file: 'godzilla.xml', fxproFile: 'Godzilla.xml' },
+  { name: 'Signals Under', category: 'Digit Under', description: 'Digit-under signal strategy preset with editable threshold settings.', file: 'signals-under.xml', fxproFile: 'signals under bot.xml' },
 ];
 
 const planCards = [
@@ -111,7 +111,7 @@ const reviewCountries = [
   { country: 'Ghana', code: 'gh', first: ['Ama', 'Kojo', 'Abena', 'Yaw'], last: ['Mensah', 'Owusu', 'Boateng', 'Asante'] },
   { country: 'South Africa', code: 'za', first: ['Lerato', 'Thandi', 'Sipho', 'Amara'], last: ['Mokoena', 'Naidoo', 'Dlamini', 'Botha'] },
   { country: 'Jamaica', code: 'jm', first: ['Tiana', 'Andre', 'Shanice', 'Malik'], last: ['Campbell', 'Brown', 'Clarke', 'Morgan'] },
-  { country: 'Canary Islands, Spain', code: 'ic', first: ['Lucía', 'Mateo', 'Nerea', 'Diego'], last: ['Suárez', 'Díaz', 'García', 'Morales'] },
+  { country: 'Canary Islands, Spain', code: 'es', flagLabel: 'Spain (Canary Islands)', first: ['Lucía', 'Mateo', 'Nerea', 'Diego'], last: ['Suárez', 'Díaz', 'García', 'Morales'] },
   { country: 'Tanzania', code: 'tz', first: ['Neema', 'Baraka', 'Asha', 'Jabari'], last: ['Mushi', 'Mwakalinga', 'Mhando', 'Juma'] },
   { country: 'Uganda', code: 'ug', first: ['Achieng', 'Kato', 'Nabirye', 'Mugisha'], last: ['Okello', 'Ssemanda', 'Nakamya', 'Tumusiime'] },
   { country: 'Zimbabwe', code: 'zw', first: ['Tariro', 'Tendai', 'Nyasha', 'Tawanda'], last: ['Moyo', 'Ndlovu', 'Dube', 'Mutsvairo'] },
@@ -151,7 +151,7 @@ function ReviewCarousel() {
       {reviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.countryCode}-${index}`}>
         <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span></div>
         <p className="review-copy">{review.text}</p>
-        <div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>{review.name}</b><small>{review.country}</small></span></div>
+        <div className="review-person"><span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.countryCode === 'es' && review.country.startsWith('Canary') ? 'Spain, for the Canary Islands' : review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span><span><b>{review.name}</b><small>{review.country}</small></span></div>
       </article>)}
     </div>
   </>;
@@ -185,7 +185,7 @@ function AccountManagement({ whatsapp }: { whatsapp: string }) {
     <header className="tab-heading"><p className="landing-kicker">Client enquiries</p><h1 id="page-title">Account management,<br/>with risk in view.</h1><p>Request a conversation about account-management or pool-trading options. This form records an enquiry only; it does not start trading or authorize access to your Deriv account.</p></header>
     <div className="management-layout">
       <section className="management-details">
-        <article className="management-panel"><p className="landing-kicker">Starting capital</p><h2>USD 100–600</h2><p>Enquiries can be made for starting amounts from USD 100 up to USD 600. Any growth figures such as USD 100 to USD 1,000 or USD 600 to USD 6,000 are examples of goals only, not forecasts or promises. You could lose some or all of your capital.</p></article>
+        <article className="management-panel"><p className="landing-kicker">Starting capital · Illustrative goals</p><h2>One step at a time</h2><div className="capital-ladder">{[100, 200, 300, 400, 500, 600].map(amount => <div key={amount}><span>From USD {amount}</span><strong>Example goal · USD {(amount * 10).toLocaleString('en-US')}</strong></div>)}</div><p>These are examples only, not forecasts or promises. There is no set timeline, and you could lose some or all of your capital.</p></article>
         <article className="management-panel"><p className="landing-kicker">Before you proceed</p><ul><li>Keep your password, verification codes, and login under your control. Never send them to anyone.</li><li>You remain responsible for your Deriv account and all deposits and withdrawals.</li><li>Trading and pool trading carry substantial risk. Past or target results are not guaranteed.</li><li>The proposed 50/50 share of realized profits is not promised or applied by this enquiry. Any account management, pool trading, or profit-sharing would require licensing and legal review, a written agreement, and confirmation it is allowed by Deriv's terms.</li></ul></article>
       </section>
       <form className="management-form" onSubmit={submit}>
@@ -357,7 +357,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     <div className="free-bot-grid">{freeBots.map((bot, index) => <article className="free-bot-card" key={bot.file}>
       <div className="free-bot-top"><span className="free-bot-index">{String(index + 1).padStart(2, '0')}</span><span className="free-bot-category">{bot.category}</span></div>
       <h2>{bot.name}</h2><p>{bot.description}</p>
-      <div className="free-bot-actions"><a className="free-bot-download" href={`/bots/${bot.file}`} download>{'Download XML'} <span aria-hidden="true">↓</span></a><a className="free-bot-open" href={`https://www.fxprotrades.site/?bot=${encodeURIComponent(bot.file)}`} target="_blank" rel="noreferrer">Open in fxprotrades.site ↗</a></div>
+      <div className="free-bot-actions"><a className="free-bot-download" href={`/bots/${bot.file}`} download>{'Download XML'} <span aria-hidden="true">↓</span></a><a className="free-bot-open" href={`https://www.fxprotrades.site/?${new URLSearchParams({ bot: bot.fxproFile, tab: 'id-bot-builder' })}`} target="_blank" rel="noreferrer">Open in fxprotrades.site ↗</a></div>
     </article>)}</div>
     <p className="bot-risk-note">These XML files can automate trades. Inspect the contract, stake progression and loss limits in Deriv Bot, and test with a demo account before considering live use. Automation does not remove trading risk.</p>
   </section>;
@@ -367,7 +367,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
   else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} onCheckout={() => setPurchasePlan(plan)} />)}</div><p className="pricing-note">Pay only to the TRC20 address shown in the BrandyFx payment window. Verify the network and amount before sending.</p></section>;
   else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
   else if (currentTab === 'refund') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">Refund<br/>policy.</h1><p>Last Updated: January 27, 2026</p></header>
-    <div className="policy-guarantee"><b>♛</b><div><h2>Royal Guarantee</h2><p>We stand behind every purchase. If BrandyFx doesn't deliver, you get your money back — no runaround, no questions asked.</p></div><strong>48 HOURS<small>Back Guarantee</small></strong></div>
+    <div className="policy-guarantee"><img className="policy-brand-mark" src="/brand/brandyfx-app-icon.png" alt=""/><div><h2>Royal Guarantee</h2><p>We stand behind every purchase. If BrandyFx doesn't deliver, you get your money back — no runaround, no questions asked.</p></div><strong>48 HOURS<small>Back Guarantee</small></strong></div>
     <div className="policy-sections">{refundSections.map((section, index) => <article className="policy-section" key={section.title}><div className="section-heading"><span>{String(index + 1).padStart(2, '0')}</span><i/><h2>{section.title}</h2></div><p>{section.body}</p>
       {section.list && <ul>{section.list.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul>}
       {section.ordered && <ol>{section.ordered.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ol>}
