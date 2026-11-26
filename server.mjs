@@ -16,6 +16,12 @@ db?.on('error', error => console.error('Database connection interrupted', error.
 if (!dev && (!db || !process.env.DERIV_CLIENT_ID)) throw new Error('DATABASE_URL and DERIV_CLIENT_ID are required');
 const adminIds = new Set((process.env.ADMIN_DERIV_ACCOUNTS || '').split(',').map(id => id.trim()).filter(Boolean));
 const approved = process.env.APPROVED_RULE_VERSION === VERSION;
+const DEFAULT_SITE_SETTINGS = {
+  backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: 0.5, glassOpacity: 0.72,
+  regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
+  regularDays: 0, premiumDays: 0, offerEnabled: false, offerEndsAt: '',
+  promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
+};
 const redirectUri = new URL('/api/deriv/callback', origin).href;
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('base64url');
@@ -28,6 +34,16 @@ const error = (status, message) => Object.assign(new Error(message), { status })
 const one = async (sql, params = []) => (await db.query(sql, params)).rows[0];
 const rows = async (sql, params = []) => (await db.query(sql, params)).rows;
 const offer = () => one('SELECT amount,currency,days,instructions FROM offer');
+async function siteSettings() {
+  const stored = db ? await one('SELECT settings FROM site_settings WHERE id=true') : null;
+  const settings = { ...DEFAULT_SITE_SETTINGS, ...(stored?.settings || {}) };
+  const ends = settings.offerEndsAt ? new Date(settings.offerEndsAt).getTime() : 0;
+  return { backgroundUrl: settings.backgroundUrl, videoOpacity: settings.videoOpacity, glassOpacity: settings.glassOpacity,
+    regularPrice: settings.regularPrice, premiumPrice: settings.premiumPrice, regularOffer: settings.regularOffer,
+    premiumOffer: settings.premiumOffer, regularDays: settings.regularDays, premiumDays: settings.premiumDays,
+    offerActive: Boolean(settings.offerEnabled && Number.isFinite(ends) && ends > Date.now()), offerEndsAt: settings.offerEndsAt,
+    promoHeading: settings.promoHeading, promoSubheading: settings.promoSubheading, trc20Wallet: settings.trc20Wallet };
+}
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
 const memberState = id => one(`SELECT s.account_id,s.accounts,s.expires,
@@ -59,14 +75,15 @@ async function oauth(req, res, url) {
     const state = random();
     const verifier = random();
     await db.query('DELETE FROM oauth_attempts WHERE expires<=now()');
-    await db.query(`INSERT INTO oauth_attempts VALUES($1,$2,$3,now()+interval '5 minutes')`, [hash(id), state, verifier]);
+    const returnTo = url.searchParams.get('return_to') === '/kingz.html' ? '/kingz.html' : '/';
+    await db.query(`INSERT INTO oauth_attempts(id,state,verifier,expires,return_to) VALUES($1,$2,$3,now()+interval '5 minutes',$4)`, [hash(id), state, verifier, returnTo]);
     const auth = new URL('https://auth.deriv.com/oauth2/auth');
     auth.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri,
       response_type: 'code', scope: 'trade', state, code_challenge: hash(verifier), code_challenge_method: 'S256' });
     return redirect(res, auth.href, [cookie('bfx_oauth', id, 300)]);
   }
   const clear = [cookie('bfx_oauth', '', 0)];
-  const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier', [key(req, 'bfx_oauth')]);
+  const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier,return_to', [key(req, 'bfx_oauth')]);
   if (!attempt || attempt.state !== url.searchParams.get('state')) return redirect(res, '/?login=invalid', clear);
   if (url.searchParams.has('error') || !url.searchParams.get('code')) return redirect(res, '/?login=denied', clear);
   try {
@@ -89,7 +106,7 @@ async function oauth(req, res, url) {
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
     [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
-    return redirect(res, '/', [...clear, cookie('bfx_session', id, seconds)]);
+    return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds)]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
     return redirect(res, '/?login=failed', clear);
@@ -134,6 +151,7 @@ async function api(req, res, url) {
   const method = req.method;
   if (method === 'POST' && req.headers.origin !== origin.origin) throw error(403, 'Invalid request origin.');
   if (method === 'GET' && path === '/api/markets') return json(res, 200, db ? await markets() : []);
+  if (method === 'GET' && path === '/api/settings') return json(res, 200, await siteSettings());
   if (method === 'GET' && path === '/api/me' && !db) return json(res, 200, { ready: false });
   if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
   if (!db) throw error(503, 'The service is awaiting setup.');
@@ -167,20 +185,48 @@ async function api(req, res, url) {
   if (!account) throw error(401, 'Sign in with Deriv.');
   if (method === 'POST' && path === '/api/payment') {
     if (!approved) throw error(409, 'Paid access is awaiting launch.');
-    const { reference } = await body(req);
+    const { reference, package: tier = 'regular' } = await body(req);
     if (typeof reference !== 'string' || !/^[A-Za-z0-9-]{5,80}$/.test(reference.trim())) throw error(400, 'Enter a valid payment reference.');
-    const result = await one(`INSERT INTO payments(account_id,reference,amount,currency,days)
-      SELECT $1,$2,amount,currency,days FROM offer WHERE NOT EXISTS(
+    if (!['regular', 'premium'].includes(tier)) throw error(400, 'Choose a valid access plan.');
+    const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
+      SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
+          THEN CASE WHEN $3='premium' THEN (settings->>'premiumOffer')::numeric ELSE (settings->>'regularOffer')::numeric END
+          ELSE CASE WHEN $3='premium' THEN (settings->>'premiumPrice')::numeric ELSE (settings->>'regularPrice')::numeric END END AS amount,
+        CASE WHEN $3='premium' THEN (settings->>'premiumDays')::integer ELSE (settings->>'regularDays')::integer END AS days FROM settings)
+      INSERT INTO payments(account_id,reference,amount,currency,days,package)
+      SELECT $1,$2,amount,'USD',days,$3 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
-      ON CONFLICT DO NOTHING RETURNING id`, [account, reference.trim().toUpperCase()]);
+      ON CONFLICT DO NOTHING RETURNING id`, [account, reference.trim().toUpperCase(), tier]);
     if (!result) throw error(409, 'The reference was already submitted, a request is pending, or there is no active offer.');
     return json(res, 201, result);
   }
   if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
   if (!admin) throw error(403, 'Administrator access required.');
   if (method === 'GET' && path === '/api/admin/payments') {
-    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,created,expires,revoked_at
+    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at
       FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 100`));
+  }
+  if (method === 'GET' && path === '/api/admin/site-settings') return json(res, 200, await siteSettings());
+  if (method === 'POST' && path === '/api/admin/site-settings') {
+    const input = await body(req);
+    const price = value => typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1000000;
+    const days = value => Number.isInteger(value) && value >= 0 && value <= 365;
+    const validBackground = typeof input.backgroundUrl === 'string' && (input.backgroundUrl.startsWith('/media/') && !input.backgroundUrl.includes('..') || (() => { try { return new URL(input.backgroundUrl).protocol === 'https:'; } catch { return false; } })());
+    const validWallet = input.trc20Wallet === '' || (typeof input.trc20Wallet === 'string' && /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(input.trc20Wallet));
+    const endTime = input.offerEndsAt === '' ? 0 : new Date(input.offerEndsAt).getTime();
+    const offerEndsAt = input.offerEndsAt === '' ? '' : Number.isFinite(endTime) ? new Date(endTime).toISOString() : '';
+    if (!validBackground || !price(input.regularPrice) || !price(input.premiumPrice) || !price(input.regularOffer) || !price(input.premiumOffer) ||
+      input.regularOffer > input.regularPrice || input.premiumOffer > input.premiumPrice || !days(input.regularDays) || !days(input.premiumDays) ||
+      typeof input.offerEnabled !== 'boolean' || !['videoOpacity','glassOpacity'].every(key => typeof input[key] === 'number' && input[key] >= 0.1 && input[key] <= 0.9) ||
+      typeof input.promoHeading !== 'string' || !input.promoHeading.trim() || input.promoHeading.length > 90 || typeof input.promoSubheading !== 'string' || !input.promoSubheading.trim() || input.promoSubheading.length > 140 || !validWallet ||
+      input.offerEndsAt !== '' && !Number.isFinite(new Date(input.offerEndsAt).getTime()) ||
+      input.offerEnabled && (!offerEndsAt || endTime <= Date.now())) throw error(400, 'Check the prices, terms, media URL, offer end time and TRC20 address.');
+    const settings = { backgroundUrl: input.backgroundUrl, videoOpacity: input.videoOpacity, glassOpacity: input.glassOpacity,
+      regularPrice: input.regularPrice, premiumPrice: input.premiumPrice, regularOffer: input.regularOffer, premiumOffer: input.premiumOffer,
+      regularDays: input.regularDays, premiumDays: input.premiumDays, offerEnabled: input.offerEnabled, offerEndsAt,
+      promoHeading: input.promoHeading.trim(), promoSubheading: input.promoSubheading.trim(), trc20Wallet: input.trc20Wallet };
+    await db.query('INSERT INTO site_settings(id,settings) VALUES(true,$1::jsonb) ON CONFLICT(id) DO UPDATE SET settings=$1::jsonb', [JSON.stringify(settings)]);
+    return json(res, 200, await siteSettings());
   }
   if (method === 'POST' && path === '/api/admin/offer') {
     const { amount, currency, days, instructions } = await body(req);
@@ -221,14 +267,14 @@ const vite = dev ? await (await import('vite')).createServer({
   appType: 'spa',
 }) : null;
 const root = resolve('dist');
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.webm': 'video/webm' };
 http.on('request', async (req, res) => {
   try {
     const url = new URL(req.url, origin);
     if (url.origin !== origin.origin) throw error(400, 'Invalid URL.');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    if (!dev) res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; style-src 'self'; script-src 'self'");
+    if (!dev) res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https:; media-src 'self' https:");
     if (url.pathname.startsWith('/api/')) {
       res.setHeader('Cache-Control', 'no-store');
       await api(req, res, url);

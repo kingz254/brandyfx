@@ -1,24 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import Landing from './landing';
+import Landing, { PublicSettings } from './landing';
 import './theme.css';
 
 type Market = { symbol: string; name: string; quote: string; points: string[]; updated: string; live: boolean };
 type Signal = { id: number; symbol: string; family: string; label: string; digit: number | null; issued: string; expires: string };
 type Offer = { amount: string; currency: string; days: number; instructions: string };
 type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string };
-type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number };
+type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
 const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
 const home = route.has('home');
+const adminRoute = location.pathname === '/kingz.html';
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
 const name = (market: Market) => market.name.replace('Volatility ', 'Vol ').replace(' Index', '');
 const until = (offset: number) => new Date(Date.now() + offset).toISOString();
+const defaultSettings: PublicSettings = {
+  backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: .5, glassOpacity: .72,
+  regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
+  regularDays: 0, premiumDays: 0, offerActive: false, offerEndsAt: '',
+  promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
+};
 const fixtureMarkets: Market[] = ['10', '25', '50', '75', '100'].map((index, market) => {
   const points = Array.from({ length: 64 }, (_, i) =>
     (1234 + market * 42 + i * 0.36 + Math.sin(i * 0.45) * 4 + Math.cos(i * 1.64) * 1.7).toFixed(2));
@@ -170,24 +177,26 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
   </main>;
 }
 
-function Access({ member, run }: { member: Member; run: (path: string, data?: object) => Promise<boolean> }) {
+function Access({ member, run, settings }: { member: Member; run: (path: string, data?: object) => Promise<boolean>; settings: PublicSettings }) {
   const [reference, setReference] = useState('');
+  const [tier, setTier] = useState<'regular' | 'premium'>('regular');
   const payment = member.payment;
-  const offer = member.offer;
+  const amount = settings.offerActive ? (tier === 'premium' ? settings.premiumOffer : settings.regularOffer) : (tier === 'premium' ? settings.premiumPrice : settings.regularPrice);
+  const days = tier === 'premium' ? settings.premiumDays : settings.regularDays;
   const status = member.passUntil ? 'Pass active' : payment?.revoked_at ? 'Pass revoked' :
     payment?.status === 'pending' ? 'Approval pending' : payment?.status === 'approved' ? 'Pass expired' :
       payment?.status === 'declined' ? 'Request declined' : 'Deriv connected';
   return <main className="access layout">
     <div><p className="status">{status}</p><h1>Get desk access</h1><p>Submit your payment reference for review.</p></div>
     <section className="access-panel">
-      {!member.launched || !offer ? <><h2>Paid access is opening soon</h2><p>Payment instructions will appear here when passes go on sale.</p></>
-        : <><h2>{offer.currency} {offer.amount} <small>for {offer.days} {offer.days === 1 ? 'day' : 'days'}</small></h2>
+      {!member.launched ? <><h2>Paid access is opening soon</h2><p>Payment instructions will appear here when passes go on sale.</p></>
+        : <><div className="access-plan-switch" role="group" aria-label="Choose access plan"><button type="button" aria-pressed={tier === 'regular'} onClick={() => setTier('regular')}>Regular</button><button type="button" aria-pressed={tier === 'premium'} onClick={() => setTier('premium')}>Premium</button></div><h2>USD {amount.toFixed(2)} <small>{days ? `for ${days} ${days === 1 ? 'day' : 'days'}` : 'access term is being configured'}</small></h2>
           {payment?.status === 'pending' ? <p>Your payment reference is being reviewed. This page updates when the review is complete.</p>
-            : <><p className="instructions">{offer.instructions}</p><form onSubmit={async event => {
+            : <><p className="instructions">Send USDT using the TRON (TRC20) network to:<br/><strong>{settings.trc20Wallet || 'Wallet address will be published here before launch.'}</strong></p>{(!days || !settings.trc20Wallet) && <p>Payment instructions will be enabled when the access term and wallet address are configured.</p>}<form onSubmit={async event => {
               event.preventDefault();
-              if (await run('payment', { reference })) setReference('');
+              if (await run('payment', { reference, package: tier })) setReference('');
             }}><label>Payment reference<input value={reference} onChange={event => setReference(event.target.value)} minLength={5} maxLength={80} required /></label>
-              <button className="primary">Submit for review</button></form></>}
+              <button className="primary" disabled={!days || !settings.trc20Wallet}>Submit for review</button></form></>}
         </>}
     </section>
   </main>;
@@ -223,7 +232,7 @@ function Admin({ member, run }: { member: Member; run: (path: string, data?: obj
       {loadError && <p role="alert">{loadError}</p>}
       {!loadError && !orders.length && <p>No payment requests yet.</p>}
       <ul className="orders">{orders.map(order => <li key={order.id}>
-        <div><strong>{order.reference}</strong><p>{order.account_id} · {order.currency} {order.amount} · {order.days} days</p>
+        <div><strong>{order.reference}</strong><p>{order.account_id} · {order.package} · {order.currency} {order.amount} · {order.days} days</p>
           <small>{order.revoked_at ? 'Revoked' : order.status}{order.expires ? ' / ' + dateLabel(order.expires) : ''}</small></div>
         <form onSubmit={async event => {
           event.preventDefault();
@@ -241,6 +250,37 @@ function Admin({ member, run }: { member: Member; run: (path: string, data?: obj
   </main>;
 }
 
+function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSaved: (value: PublicSettings) => void; run: (path: string, data?: object) => Promise<boolean> }) {
+  const [saved, setSaved] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  return <main className="site-admin layout">
+    <header className="site-admin-heading"><div><h1>Site settings</h1><p>Adjust the public experience, access plans and payment destination.</p></div><a className="landing-secondary" href="/?home">View site ↗</a></header>
+    <form className="site-settings-form" onSubmit={async event => {
+      event.preventDefault(); setBusy(true); setSaved(''); setError('');
+      const raw = Object.fromEntries(new FormData(event.currentTarget));
+      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), regularPrice: Number(raw.regularPrice), premiumPrice: Number(raw.premiumPrice), regularOffer: Number(raw.regularOffer), premiumOffer: Number(raw.premiumOffer), regularDays: Number(raw.regularDays), premiumDays: Number(raw.premiumDays), offerEnabled: raw.offerEnabled === 'on' };
+      try { const result = await api<PublicSettings>('admin/site-settings', payload); onSaved(result); setSaved('Settings saved.'); }
+      catch (cause) { setError((cause as Error).message); }
+      finally { setBusy(false); }
+    }}>
+      <section className="admin-setting-panel"><p className="landing-kicker">Visual system</p><h2>Background & glass</h2>
+        <label>Background media URL<input name="backgroundUrl" type="text" defaultValue={settings.backgroundUrl} placeholder="/media/background.mp4 or https://…" required/><small>Use a local /media/ path or an HTTPS URL. Video formats: MP4 or WebM.</small></label>
+        <div className="admin-field-grid"><label>Video opacity <output>{Math.round(settings.videoOpacity * 100)}%</output><input name="videoOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.videoOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label>
+          <label>Glass opacity <output>{Math.round(settings.glassOpacity * 100)}%</output><input name="glassOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.glassOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label></div>
+      </section>
+      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{(['regular', 'premium'] as const).map(tier => <fieldset key={tier}><legend>{tier === 'regular' ? 'Regular' : 'Premium'}</legend><label>Standard price (USD)<input name={`${tier}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${tier}Price`]} required/></label><label>Offer price (USD)<input name={`${tier}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${tier}Offer`]} required/></label><label>Access days<input name={`${tier}Days`} type="number" min="0" max="365" defaultValue={settings[`${tier}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
+        <label className="admin-check"><input name="offerEnabled" type="checkbox" defaultChecked={settings.offerActive}/> Enable launch offer</label>
+        <div className="admin-field-grid"><label>Offer end date/time<input name="offerEndsAt" type="datetime-local" defaultValue={settings.offerEndsAt ? new Date(settings.offerEndsAt).toISOString().slice(0, 16) : ''}/></label><label>Promotion heading<input name="promoHeading" maxLength={90} defaultValue={settings.promoHeading} required/></label></div>
+        <label>Promotion subheading<input name="promoSubheading" maxLength={140} defaultValue={settings.promoSubheading} required/></label>
+      </section>
+      <section className="admin-setting-panel"><p className="landing-kicker">Payments</p><h2>USDT · TRC20</h2><label>TRC20 wallet address<input name="trc20Wallet" autoComplete="off" defaultValue={settings.trc20Wallet} placeholder="T…"/><small>Shown publicly on the pricing page when configured. Card and M-Pesa remain marked coming soon.</small></label></section>
+      {(error || saved) && <p className={error ? 'admin-message error' : 'admin-message'} role={error ? 'alert' : 'status'}>{error || saved}</p>}
+      <div className="site-admin-actions"><button className="landing-primary" disabled={busy}>{busy ? 'Saving…' : 'Save site settings'}</button><button type="button" className="landing-secondary" onClick={() => void run('logout')}>Sign out</button></div>
+    </form>
+  </main>;
+}
+
 const loginMessage: Record<string, string> = {
   setup: 'Deriv sign-in is awaiting setup.', invalid: 'This sign-in link expired. Please start again.',
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
@@ -249,6 +289,8 @@ const loginMessage: Record<string, string> = {
 
 function App() {
   const markets = useMarkets();
+  const [settings, setSettings] = useState<PublicSettings>(defaultSettings);
+  const [settingsReady, setSettingsReady] = useState(false);
   const [member, setMember] = useState<Member>({});
   const [loaded, setLoaded] = useState(preview || home);
   const [tab, setTab] = useState('desk');
@@ -268,7 +310,17 @@ function App() {
     }
   }
   useEffect(() => {
-    if (preview || home) return;
+    let active = true;
+    api<PublicSettings>('settings').then(value => { if (active) setSettings({ ...defaultSettings, ...value }); })
+      .catch(() => undefined).finally(() => { if (active) setSettingsReady(true); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    document.documentElement.style.setProperty('--video-opacity', String(settings.videoOpacity));
+    document.documentElement.style.setProperty('--glass-opacity', String(settings.glassOpacity));
+  }, [settings.videoOpacity, settings.glassOpacity]);
+  useEffect(() => {
+  if (preview || home) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
@@ -302,11 +354,14 @@ function App() {
   }
   const showingDesk = preview || (canView && tab === 'desk');
   let page: ReactNode;
-  if (home) page = <Landing markets={markets} />;
+  if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} />;
+  else if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
+  else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
+  else if (adminRoute) page = <main className="admin-gate"><img src="/brand/brandyfx-app-icon.png" alt=""/><h1>Administrator sign in</h1><p>Sign in with the Deriv account configured for site administration.</p>{notice && <p role="alert">{notice}</p>}<a className="landing-primary" href="/api/deriv/start?return_to=%2Fkingz.html">Continue with Deriv ↗</a><a className="landing-secondary" href="/?home">Return to BrandyFx</a></main>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
   else if (showingDesk) page = <Desk markets={markets} signals={preview ? fixtureSignals : signals} connected={preview || connected} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
-  else if (member.account) page = <Access member={member} run={run} />;
+  else if (member.account) page = <Access member={member} run={run} settings={settings} />;
   else if (member.accounts?.length) page = <main className="layout access"><div><h1>Choose an account</h1>
     <p>Use the same Deriv account each time to keep your pass.</p></div><section className="access-panel account-list">
       {member.accounts.map(account => <button className="quiet" key={account} disabled={pending} onClick={() => void run('account', { account })}>{account}</button>)}
@@ -326,15 +381,15 @@ function App() {
     {import.meta.env.DEV && <a className="preview-link login-preview" href="/?preview">Open desk preview</a>}
   </main>;
   return <><div className="site-backdrop" aria-hidden="true">
-    <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg">
-      <source src="/media/brandyfx-background.mp4" type="video/mp4" />
-    </video>
+    {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
+  {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
   {home ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
-        <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Admin</button></>}
+        <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Payments</button>
+        <a className="quiet" href="/kingz.html">Site settings</a></>}
       {(member.account || member.accounts?.length) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
   </header> : null}
