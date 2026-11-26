@@ -312,6 +312,12 @@ body {
 .signal-price strong, .signal-price small { display: block; }
 .signal-price strong { color: var(--night-text); font: 600 .84rem var(--numbers); }
 .signal-price small { margin-top: .25rem; color: var(--night-muted); font-size: .68rem; }
+.signal-quote span { color: var(--night-accent); font-size: 1.65rem; font-weight: 800; }
+.signal-table .signal-timer-row td { padding: .4rem .9rem; text-align: right; background: rgb(81 231 163 / .08); font-size: .8rem; }
+.signal-timer-row time { color: var(--night-accent); font: 700 .9rem var(--numbers); }
+.contract-guide { margin: 0 0 1rem; padding: 1rem 1.25rem; border: 1px solid var(--glass-edge); border-radius: var(--radius); background: rgb(5 19 13 / .76); backdrop-filter: blur(16px); }
+.contract-guide h2 { margin: 0 0 .45rem; font-size: 1.15rem; }
+.contract-guide p { margin: .36rem 0; line-height: 1.5; }
 .desk-wait, .signal-disclaimer { color: var(--night-muted); font-size: .82rem; }
 .desk-wait { padding: 1rem; }
 .signal-disclaimer { margin: .75rem .15rem; }
@@ -434,6 +440,7 @@ footer { margin-top: 1.4rem; }
 .login-card > p { color: var(--night-muted); }
 .deriv-login { width: 100%; margin-top: 1rem; min-height: 2.75rem; color: var(--night-ink); background: linear-gradient(120deg, var(--login-action), var(--emerald-bright)); border: 0; border-radius: .68rem; }
 .deriv-login:hover { background: var(--login-action-hover); }
+a.deriv-login { display: flex; align-items: center; justify-content: center; text-decoration: none; }
 .login-divider { display: flex; align-items: center; gap: .8rem; margin: 1.05rem 0; color: var(--night-muted); font-size: .85rem; }
 .login-divider::before, .login-divider::after { content: ""; flex: 1; height: 1px; background: var(--login-line-faint); }
 .token-login { width: 100%; min-height: 2.65rem; border: 1px solid var(--login-line); border-radius: .68rem; color: var(--night-text); background: var(--login-fill-faint); }

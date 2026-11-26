@@ -17,12 +17,12 @@ test('warms up and detects even and odd digit imbalance', () => {
   assert.ok(evaluate(odd).some(signal => signal.family === 'evenOdd' && signal.label === 'Odd'));
 });
 
-test('detects the requested digit barriers and matches/differs preview rules', () => {
+test('detects the requested digit barriers and Matches rules', () => {
   const sample = digits => Array.from({ length: 255 }, (_, i) => '101.' + digits[i % digits.length]);
-  assert.ok(evaluate(sample('777889')).some(signal => signal.label === 'Over 6' && signal.digit === 6));
-  assert.ok(evaluate(sample('000112')).some(signal => signal.label === 'Under 3' && signal.digit === 3));
+  assert.ok(evaluate(sample('000112')).some(signal => signal.label === 'Over 6' && signal.digit === 6));
+  assert.ok(evaluate(sample('777889')).some(signal => signal.label === 'Under 3' && signal.digit === 3));
   assert.ok(evaluate(sample('01234444456789')).some(signal => signal.label === 'Matches' && signal.digit === 4));
-  assert.ok(evaluate(sample('012345689')).some(signal => signal.label === 'Differs' && signal.digit === 7));
+  assert.ok(!evaluate(sample('012345689')).some(signal => signal.family === 'digit'));
 });
 
 test('drops overlapping ticks and resets the strategy on feed gaps', () => {

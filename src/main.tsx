@@ -13,15 +13,20 @@ type Order = Payment & { account_id: string; reference: string; amount: string; 
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
-const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
+const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches']] as const;
+const contractGuides = {
+  evenOdd: { columns: ['Even', 'Odd'], rules: 'Even wins on 0, 2, 4, 6 or 8. Odd wins on 1, 3, 5, 7 or 9. A final quote of 1254.78 ends in 8, so it wins an Even contract.' },
+  range: { columns: ['Over 6', 'Under 3'], rules: 'Over 6 wins on 7, 8 or 9. Under 3 wins on 0, 1 or 2. The comparisons are strict. A final digit of 6 loses an Over 6 contract, and a 3 loses an Under 3 contract.' },
+  digit: { columns: ['Matches'], rules: 'A Matches prediction can be any digit from 0 through 9. If Volatility 50 shows Digit 4, a contract predicting 4 wins only if the final tick ends in 4. Every other digit loses.' },
+};
 const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
 const home = route.has('home');
+const deskEntry = route.has('desk');
 const adminRoute = location.pathname === '/kingz.html';
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
-const name = (market: Market) => market.name.replace('Volatility ', 'Vol ').replace(' Index', '');
 const until = (offset: number) => new Date(Date.now() + offset).toISOString();
 const defaultSettings: PublicSettings = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: .5, glassOpacity: .72,
@@ -41,10 +46,9 @@ const fixtureMarkets: Market[] = marketOrder.map((symbol, market) => {
 });
 const fixtureSignals: Signal[] = [
   ['evenOdd', 'Even', null], ['range', 'Over 6', 6], ['digit', 'Matches', 4],
-  ['evenOdd', 'Odd', null], ['evenOdd', 'Even', null], ['evenOdd', 'Odd', null],
 ].map(([family, label, digit], i) => ({
   id: i + 1, symbol: 'R_50', family: String(family), label: String(label), digit: digit as number | null,
-  issued: until(-i * 72000), expires: until(i < 3 ? 3600000 : -i * 72000 + 30000),
+  issued: until(0), expires: until(50000),
 }));
 
 async function api<T>(path: string, value?: object): Promise<T> {
@@ -85,22 +89,14 @@ function Mark() {
   return <img className="mark" src="/brand/brandyfx-app-icon.png" alt="" />;
 }
 
-function Ribbon({ markets }: { markets: Market[] }) {
-  return <div className="ribbon"><span className="ribbon-label">{preview ? 'Sample prices' : 'Market prices'}</span>
-    <div className="ribbon-items" role="region" aria-label={preview ? 'Sample market quotes' : 'Live market quotes'} tabIndex={markets.length ? 0 : undefined}>{markets.length ? markets.map(market => <span key={market.symbol}>
-      {name(market)} <strong key={market.quote}>{market.quote || '–'}</strong>{!market.live && <small>Stale</small>}
-    </span>) : <span>Waiting for market data</span>}</div>
-  </div>;
-}
-
 function Desk({ markets, signals, connected }: { markets: Market[]; signals: Signal[]; connected: boolean }) {
-  const [family, setFamily] = useState<string>('evenOdd');
+  const [family, setFamily] = useState<keyof typeof contractGuides>('evenOdd');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
-  const columns = family === 'evenOdd' ? ['Even', 'Odd'] : family === 'range' ? ['Over 6', 'Under 3'] : ['Matches', 'Differs'];
+  const { columns, rules } = contractGuides[family];
   const rankMarket = (symbol: string) => { const index = marketOrder.indexOf(symbol); return index < 0 ? marketOrder.length : index; };
   const orderedMarkets = [...markets].sort((a, b) => rankMarket(a.symbol) - rankMarket(b.symbol));
   const latest = new Map<string, Signal>();
@@ -110,31 +106,42 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
     if (!current || +new Date(signal.issued) > +new Date(current.issued)) latest.set(signal.symbol, signal);
   }
   const activeFamily = families.find(([id]) => id === family)?.[1] || families[0][1];
+  const feedLive = connected && orderedMarkets.some(market => market.live);
   return <main className="desk desk-table-page">
     <section className="desk-main">
       <div className="desk-heading"><div><p className="landing-kicker">DERIV · LIVE SIGNAL FEED</p><h1>Signals desk</h1><p>Live setups across the volatility markets.</p></div>
-        <span className={connected && orderedMarkets.some(item => item.live) ? 'status live' : 'status'}>{preview ? 'Sample feed' : connected ? 'Feed live' : 'Reconnecting'}</span></div>
+        <span className={feedLive ? 'status live' : 'status'}>{preview ? 'Sample feed' : feedLive ? 'Feed live' : 'Waiting for live feed'}</span></div>
       <div className="tabs" role="group" aria-label="Signal family">{families.map(([id, label]) => <button key={id} type="button"
         aria-pressed={family === id} onClick={() => setFamily(id)}>{label}</button>)}</div>
+      <section className="contract-guide" aria-label={activeFamily + ' contract guide'}>
+        <h2>How {activeFamily} works</h2>
+        <p>{rules} Deriv uses the last displayed digit of the final tick, including any trailing zero.</p>
+        <p><strong>Payout.</strong> Deriv quotes the total return before purchase for the market, duration and stake you select. Net profit on a win is the quoted payout minus the stake. A losing contract normally forfeits the stake.</p>
+        <p>Each BrandyFx signal is visible for up to 50 seconds. You choose the contract duration separately in Deriv.</p>
+      </section>
       <div className="signal-table-shell" role="region" aria-label={`${activeFamily} signals`} tabIndex={0}>
         <table className="signal-table"><caption>{activeFamily} signals by market</caption>
-          <thead><tr><th scope="col">Market</th>{columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Live price</th></tr></thead>
-          <tbody>{orderedMarkets.map(market => {
+          <thead><tr><th scope="col">Market</th>{columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Live last digits</th></tr></thead>
+          {orderedMarkets.map(market => {
             const signal = connected && market.live ? latest.get(market.symbol) : undefined;
-            return <tr key={market.symbol}>
+            const seconds = signal ? Math.ceil((+new Date(signal.expires) - clock) / 1000) : 0;
+            return <tbody key={market.symbol}><tr>
               <th scope="row">{market.name}</th>
               {columns.map(column => {
                 const matches = signal?.label === column;
-                const label = matches && signal?.family === 'digit' && signal.digit !== null ? `${column} ${signal.digit}` : column;
+                const label = matches && signal?.family === 'digit' ? `Digit ${signal.digit}` : column;
                 return <td key={column}><span className={`signal-result${matches ? ' signal-result-live' : ''}`} aria-label={matches ? `${label} signal` : 'No current signal'}>{matches ? label : '----'}</span></td>;
               })}
-              <td className="signal-price"><strong>{market.quote || '–'}</strong><small>{connected && market.live && market.updated ? stamp(market.updated) : 'Waiting for ticks'}</small></td>
-            </tr>;
-          })}</tbody>
+              <td className="signal-price">{market.quote ? <strong className="signal-quote">{market.quote.slice(0, -1)}<span>{market.quote.slice(-1)}</span></strong> : '–'}
+                <small>{market.live && market.updated ? stamp(market.updated) : market.quote ? 'Stale quote' : 'Waiting for ticks'}</small></td>
+            </tr>{seconds > 0 && <tr className="signal-timer-row"><td colSpan={columns.length + 2}>
+              Signal expires in <time dateTime={`PT${seconds}S`}>{seconds}s</time>
+            </td></tr>}</tbody>;
+          })}
         </table>
         {!orderedMarkets.length && <p className="desk-wait" role="status">Waiting for Deriv market data.</p>}
       </div>
-      <p className="signal-disclaimer">Signals are informational examples for your own review. A signal is not a trade instruction or a promise of a result.</p>
+      <p className="signal-disclaimer">Signals are generated from recent ticks for your own review.</p>
     </section>
   </main>;
 }
@@ -319,7 +326,7 @@ function App() {
   const [pending, setPending] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
-  const canView = Boolean(member.account && (member.admin || (member.launched && member.passUntil)));
+  const canView = Boolean(member.admin || (member.account && member.launched && member.passUntil));
   async function refresh() {
     try {
       setMember(await api<Member>('me'));
@@ -346,15 +353,21 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (!canView || tab !== 'desk') return;
-    const events = new EventSource('/api/stream');
-    events.onopen = () => setConnected(true);
-    events.onmessage = event => setSignals(JSON.parse(event.data));
-    events.onerror = () => { setConnected(false); setSignals([]); };
-    events.addEventListener('locked', () => {
-      events.close(); setSignals([]); setConnected(false); void refresh();
-    });
-    return () => { events.close(); setSignals([]); setConnected(false); };
+    if (preview || home || adminRoute || !canView || tab !== 'desk') return;
+    let active = true;
+    let timer: number;
+    async function poll() {
+      try {
+        const data = await api<Signal[]>('signals');
+        if (active) { setSignals(data); setConnected(true); }
+      } catch {
+        if (active) { setSignals([]); setConnected(false); }
+      } finally {
+        if (active) timer = window.setTimeout(poll, 1500);
+      }
+    }
+    void poll();
+    return () => { active = false; clearTimeout(timer); setSignals([]); setConnected(false); };
   }, [canView, tab, member.account]);
   async function run(path: string, data = {}) {
     if (pending) return false;
@@ -393,7 +406,9 @@ function App() {
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
-      <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?home')}>Log in with Deriv</button>
+      {deskEntry ? member.ready ? <a className="primary deriv-login" href="/api/deriv/start">Log in with Deriv</a> :
+        <p role="status">Deriv sign-in is awaiting setup.</p> :
+        <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?home')}>Log in with Deriv</button>}
       <div className="login-divider"><span>or</span></div>
       <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
       <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
@@ -410,10 +425,9 @@ function App() {
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Payments</button>
         <a className="quiet" href="/kingz.html">Site settings</a></>}
-      {(member.account || member.accounts?.length) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
+      {(member.admin || member.account || member.accounts?.length) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
   </header> : null}
-  {showingDesk || member.account || member.accounts?.length ? <Ribbon markets={markets} /> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
     {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}

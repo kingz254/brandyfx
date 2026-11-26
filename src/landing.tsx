@@ -100,7 +100,7 @@ const steps = [
 const faqs = [
   ['Is signal accuracy guaranteed?', 'No. Signals are not guarantees of profit. Market conditions change, and you can lose some or all of the money you trade. Use the feed as information and make your own decisions.'],
   ['Which Deriv markets are covered?', 'BrandyFx follows Deriv volatility indices including V10, V25, V50, V75 and V100, subject to live market availability.'],
-  ['Which signal families are available?', 'Even / Odd, Over 6 / Under 3 and Matches / Differs.'],
+  ['Which signal families are available?', 'Even / Odd, Over 6 / Under 3 and Matches.'],
   ['Do I need trading experience?', 'Familiarity with Deriv helps. Take time to understand the contract you choose and how its stake and duration affect your risk.'],
   ['How do I get access?', 'Sign in with Deriv, choose an access plan and follow the TRC20 payment instructions. Your payment reference is reviewed before access is granted.'],
 ];
@@ -362,8 +362,8 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     <div className="landing-hero-copy">
 
       <h1 id="landing-title">Read the move.<br />Trade with intent.</h1>
-      <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Even / Odd, Over 6 / Under 3, and Matches / Differs.</p>
-      <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/">See the signal desk</a></div>
+      <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Even / Odd, Over 6 / Under 3, and Matches.</p>
+      <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/?desk">See the signal desk</a></div>
       <dl className="landing-facts"><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Market source</dt><dd>Deriv ticks</dd></div><div><dt>Execution</dt><dd>In your hands</dd></div></dl>
     </div>
     <section className="landing-feed" aria-label="Live Deriv market prices">
@@ -403,7 +403,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/">Open signal desk <span aria-hidden="true">↗</span></a></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/?desk">Open signal desk <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
     <footer className="landing-footer">

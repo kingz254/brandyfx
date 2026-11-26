@@ -1,5 +1,6 @@
-export const VERSION = 'brandyfx-even-odd-1';
+export const VERSION = 'brandyfx-digits-2';
 export const WINDOW = 255;
+export const SIGNAL_SECONDS = 50;
 
 export function formatTick(quote, precision) {
   if ((typeof quote !== 'number' && typeof quote !== 'string') || quote === '' ||
@@ -34,18 +35,19 @@ export function evaluate(quotes) {
 
   const counts = Array(10).fill(0);
   for (const quote of window) counts[Number(quote.at(-1))]++;
-  // Preview rules for the requested barriers and digit family require owner approval.
   const over = counts[7] + counts[8] + counts[9];
   const under = counts[0] + counts[1] + counts[2];
-  if (Math.max(over, under) / WINDOW >= 0.37 && over !== under) {
-    result.push({ family: 'range', label: over > under ? 'Over 6' : 'Under 3', digit: over > under ? 6 : 3 });
+  // Pipforge checks each digit in a three-digit group against a 10% threshold.
+  const overQualifier = counts.slice(7).every(count => count / WINDOW < 0.10);
+  const underQualifier = counts.slice(0, 3).every(count => count / WINDOW < 0.10);
+  if (overQualifier && (!underQualifier || over < under)) {
+    result.push({ family: 'range', label: 'Over 6', digit: 6 });
+  } else if (underQualifier && (!overQualifier || under < over)) {
+    result.push({ family: 'range', label: 'Under 3', digit: 3 });
   }
   const max = Math.max(...counts);
-  const min = Math.min(...counts);
   if (max / WINDOW >= 0.15 && counts.indexOf(max) === counts.lastIndexOf(max)) {
     result.push({ family: 'digit', label: 'Matches', digit: counts.indexOf(max) });
-  } else if (min / WINDOW <= 0.05 && counts.indexOf(min) === counts.lastIndexOf(min)) {
-    result.push({ family: 'digit', label: 'Differs', digit: counts.indexOf(min) });
   }
   return result;
 }

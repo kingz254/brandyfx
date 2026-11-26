@@ -3,7 +3,6 @@ import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { connect } from './db.mjs';
 import { VERSION } from './strategy.mjs';
 
@@ -169,39 +168,6 @@ async function oauth(req, res, url, requestBase) {
   }
 }
 
-async function live(res, id) {
-  const admin = state => adminIds.has(state?.account_id);
-  const permitted = state => state?.account_id && (admin(state) || (approved && state.pass_until));
-  if (!permitted(await memberState(id))) return json(res, 403, { error: 'An active pass is required.' });
-  res.writeHead(200, { 'Content-Type': 'text/event-stream', 'X-Accel-Buffering': 'no' });
-  res.flushHeaders();
-  let previous;
-  try {
-    while (!res.destroyed && !res.writableEnded) {
-      const result = await one(`SELECT
-        CASE WHEN s.account_id=ANY($2::text[]) OR ($3 AND EXISTS(
-          SELECT FROM payments p WHERE p.account_id=s.account_id AND p.status='approved' AND p.revoked_at IS NULL AND p.expires>now()))
-        THEN (SELECT coalesce(json_agg(recent),'[]') FROM
-          (SELECT id,symbol,family,label,digit,issued,expires FROM signals WHERE version=$4 ORDER BY issued DESC,id DESC LIMIT 150) recent)
-        END AS signals FROM sessions s WHERE s.id=$1 AND s.expires>now()`, [id, [...adminIds], approved, VERSION]);
-      if (!result?.signals) {
-        res.end('event: locked\ndata: {}\n\n');
-        break;
-      }
-      const value = JSON.stringify(result.signals);
-      const payload = value === previous ? ': keep-alive\n\n' : 'data: ' + value + '\n\n';
-      if (!res.write(payload)) {
-        res.end();
-        break;
-      }
-      previous = value;
-      await sleep(1500);
-    }
-  } finally {
-    if (!res.writableEnded) res.end();
-  }
-}
-
 async function api(req, res, url) {
   const path = url.pathname;
   const method = req.method;
@@ -237,10 +203,22 @@ async function api(req, res, url) {
   if (!db) throw error(503, 'The service is awaiting setup.');
   if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url, requestBase);
   const id = key(req, 'bfx_session');
-  if (method === 'GET' && path === '/api/stream') return live(res, id);
   const state = await memberState(id);
   const account = state?.account_id;
   const admin = adminIds.has(account) || passwordAdmin;
+  if (method === 'GET' && path === '/api/signals') {
+    if (!admin && !(approved && account && state.pass_until)) throw error(403, 'An active pass is required.');
+    const signals = await rows(`SELECT id,symbol,family,label,digit,issued,expires FROM signals
+      WHERE version=$1 AND expires>now() AND ($2 OR EXISTS (
+        SELECT FROM payments p WHERE p.account_id=$3 AND p.status='approved'
+          AND p.revoked_at IS NULL AND p.expires>now()
+          AND ((signals.family='evenOdd' AND p.package IN ('evenOdd','regular'))
+            OR (signals.family='range' AND p.package IN ('overUnder','regular'))
+            OR (signals.family='digit' AND p.package IN ('matches','premium')))
+      )) ORDER BY issued DESC,id DESC`, [VERSION, admin, account ?? null]);
+    return json(res, 200, signals);
+  }
+
   if (method === 'GET' && path === '/api/me') {
     const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,package,reference,amount,currency FROM payments
       WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;

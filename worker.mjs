@@ -1,5 +1,5 @@
 import { connect } from './db.mjs';
-import { appendTick, evaluate, VERSION, WINDOW } from './strategy.mjs';
+import { appendTick, evaluate, SIGNAL_SECONDS, VERSION, WINDOW } from './strategy.mjs';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
 const pool = connect();
@@ -16,7 +16,7 @@ const wanted = new Set([
   '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V',
   ...(process.env.MARKET_SYMBOLS || '').split(',').map(symbol => symbol.trim()).filter(Boolean),
 ]);
-const codes = { evenOdd: ['DIGITEVEN', 'DIGITODD'], range: ['DIGITOVER', 'DIGITUNDER'], digit: ['DIGITMATCH', 'DIGITDIFF'] };
+const codes = { evenOdd: ['DIGITEVEN', 'DIGITODD'], range: ['DIGITOVER', 'DIGITUNDER'], digit: ['DIGITMATCH'] };
 let stopped = false;
 let socket;
 for (const event of ['SIGINT', 'SIGTERM']) process.on(event, () => {
@@ -117,19 +117,20 @@ function stream() {
       }
       if (!appendTick(market, Number(tick.epoch), tick.quote)) return;
       delay = 1000;
-      const ready = market.quotes.length >= WINDOW && market.epoch * 1000 >= Date.now() - 15000;
+      const fresh = market.epoch * 1000 >= Date.now() - 15000;
       await db.query(`INSERT INTO markets(symbol,name,quote,points,updated,ready)
         VALUES($1,$2,$3,$4,to_timestamp($5),$6)
         ON CONFLICT(symbol) DO UPDATE SET name=excluded.name,quote=excluded.quote,points=excluded.points,
         updated=excluded.updated,ready=excluded.ready`,
-      [symbol, market.name, market.quotes.at(-1), JSON.stringify(market.quotes.slice(-64)), market.epoch, ready]);
-      if (!ready) return;
+      [symbol, market.name, market.quotes.at(-1), JSON.stringify(market.quotes.slice(-64)), market.epoch, fresh]);
+      if (!fresh || market.quotes.length < WINDOW) return;
       for (const signal of evaluate(market.quotes)) {
         if (!market.enabled.includes(signal.family)) continue;
         await db.query(`INSERT INTO signals(symbol,family,label,digit,issued,expires,version)
-          SELECT $1,$2,$3,$4,to_timestamp($5),to_timestamp($5)+interval '30 seconds',$6
-          WHERE NOT EXISTS(SELECT 1 FROM signals WHERE symbol=$1 AND family=$2 AND issued>to_timestamp($5)-interval '60 seconds')
-          ON CONFLICT DO NOTHING`, [symbol, signal.family, signal.label, signal.digit, market.epoch, VERSION]);
+          SELECT $1,$2,$3,$4,to_timestamp($5),to_timestamp($5)+$7::integer*interval '1 second',$6
+          WHERE NOT EXISTS(SELECT 1 FROM signals WHERE symbol=$1 AND family=$2 AND version=$6
+            AND issued>to_timestamp($5)-interval '60 seconds')
+          ON CONFLICT DO NOTHING`, [symbol, signal.family, signal.label, signal.digit, market.epoch, VERSION, SIGNAL_SECONDS]);
       }
     }
   });
