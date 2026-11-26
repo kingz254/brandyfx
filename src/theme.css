@@ -758,7 +758,7 @@ body { color: var(--tone-fff); }
 .footer-link-group a { color: rgb(255 255 255 / .78); font-size: .88rem; text-decoration: none; }
 .footer-link-group a:hover { color: #51e7a3; }
 .landing-footer-bottom { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: start; gap: 2rem; margin-top: 1rem; padding-top: 1.1rem; border-top: 1px solid rgb(255 255 255 / .15); }
-.landing-footer-bottom p { max-width: 100ch; margin: 0; color: rgb(255 255 255 / .76); font-size: .75rem; line-height: 1.7; }
+.landing-footer-bottom p { flex: 1 1 auto; max-width: none; margin: 0; color: rgb(255 255 255 / .76); font-size: .75rem; line-height: 1.7; }
 .landing-footer-bottom strong { color: #fff; }
 .landing-footer-bottom > span { flex: 0 0 auto; color: rgb(255 255 255 / .68); font-size: .78rem; }
 .risk-footer { display: block; width: 100%; }
