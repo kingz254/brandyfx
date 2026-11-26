@@ -16,12 +16,51 @@ export type PublicSettings = {
   promoHeading: string;
   promoSubheading: string;
   trc20Wallet: string;
+  socialEmail: string;
+  socialWhatsApp: string;
+  socialTelegram: string;
+  socialInstagram: string;
 };
 
 const tabs = [
   ['home', 'Home'], ['intelligence', 'Intelligence'], ['process', 'How it works'],
   ['challenge', 'Challenge'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['faq', 'FAQ'],
 ] as const;
+
+type SocialKey = 'socialEmail' | 'socialWhatsApp' | 'socialTelegram' | 'socialInstagram';
+const socialMeta: { key: SocialKey; label: string; kind: 'email' | 'whatsapp' | 'telegram' | 'instagram' }[] = [
+  { key: 'socialEmail', label: 'Email', kind: 'email' },
+  { key: 'socialWhatsApp', label: 'WhatsApp', kind: 'whatsapp' },
+  { key: 'socialTelegram', label: 'Telegram', kind: 'telegram' },
+  { key: 'socialInstagram', label: 'Instagram', kind: 'instagram' },
+];
+
+function socialHref(settings: PublicSettings, key: SocialKey) {
+  const value = settings[key].trim();
+  if (!value) return '';
+  return key === 'socialEmail' ? `mailto:${value}` : value;
+}
+
+function SocialGlyph({ kind }: { kind: (typeof socialMeta)[number]['kind'] }) {
+  const paths = {
+    email: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></>,
+    whatsapp: <><path d="M20 11.5a8 8 0 0 1-11.8 7L4 20l1.5-4A8 8 0 1 1 20 11.5Z"/><path d="M9 8.5c.4-.6.8-.5 1.1 0l.6 1.4c.1.3 0 .5-.2.8l-.5.6c.6 1.1 1.4 1.9 2.6 2.5l.6-.6c.2-.2.5-.3.8-.1l1.4.6c.4.2.5.6.2 1-.5.7-1.3 1-2.1.8-2.8-.6-5.3-3.1-5.8-5.8-.1-.5.4-1.1 1.3-1.2Z"/></>,
+    telegram: <path d="m21 4-3.2 16-5.1-4-2.7 2.6.4-4.7L18 7l-9.5 5.7-4.2-1.4L21 4Z"/>,
+    instagram: <><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></>,
+  };
+  return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
+}
+
+function SocialLinks({ settings, className = '' }: { settings: PublicSettings; className?: string }) {
+  const links = socialMeta.filter(({ key }) => socialHref(settings, key));
+  if (!links.length) return null;
+  return <nav className={`site-social-links ${className}`} aria-label="Contact BrandyFx">
+    {links.map(({ key, label, kind }) => <a key={key} href={socialHref(settings, key)} aria-label={label}
+      title={label} target={key === 'socialEmail' ? undefined : '_blank'} rel={key === 'socialEmail' ? undefined : 'noreferrer'}>
+      <SocialGlyph kind={kind}/><span>{label}</span>
+    </a>)}
+  </nav>;
+}
 
 const signalFamilies = [
   { name: 'Rise / Fall', detail: 'Directional setups shaped by the latest tick movement.' },
@@ -43,17 +82,64 @@ const faqs = [
   ['How do I get access?', 'Sign in with Deriv, choose an access plan and follow the TRC20 payment instructions. Your payment reference is reviewed before access is granted.'],
 ];
 
-const reviewExamples = [
-  { text: 'Having live volatility prices beside the signal feed makes the market context easier to follow.', country: 'Kenya', countryCode: 'ke' },
-  { text: 'The signal families are easy to compare, and I can stay focused on the market I selected.', country: 'Nigeria', countryCode: 'ng' },
-  { text: 'I like that each setup is presented as information and leaves the trade decision with me.', country: 'Ghana', countryCode: 'gh' },
-  { text: 'The recent signal history gives me a useful place to review what happened during a session.', country: 'South Africa', countryCode: 'za' },
-  { text: 'Moving between Rise / Fall and digit signals feels clear without losing the market context.', country: 'Kenya', countryCode: 'ke' },
-  { text: 'The risk reminders are a helpful nudge to slow down and stick to my own limits.', country: 'Nigeria', countryCode: 'ng' },
-  { text: 'The live feed and the signal desk belong together. I can check both without jumping around.', country: 'Ghana', countryCode: 'gh' },
-  { text: 'I can see which volatility market is connected before I decide what to look at next.', country: 'South Africa', countryCode: 'za' },
-  { text: 'It is useful to have Matches / Differs and Over 6 / Under 3 grouped in the same workspace.', country: 'Kenya', countryCode: 'ke' },
-  { text: 'The layout keeps the signal, current price and history in view while I review a setup.', country: 'Nigeria', countryCode: 'ng' },
+const reviewCountries = [
+  { country: 'Kenya', code: 'ke', first: ['Amani', 'Wanjiku', 'Kamau', 'Nia'], last: ['Mwangi', 'Otieno', 'Wanjala', 'Njoroge'] },
+  { country: 'Nigeria', code: 'ng', first: ['Chika', 'Adaeze', 'Tunde', 'Ife'], last: ['Okafor', 'Bello', 'Eze', 'Afolayan'] },
+  { country: 'Ghana', code: 'gh', first: ['Ama', 'Kojo', 'Abena', 'Yaw'], last: ['Mensah', 'Owusu', 'Boateng', 'Asante'] },
+  { country: 'South Africa', code: 'za', first: ['Lerato', 'Thandi', 'Sipho', 'Amara'], last: ['Mokoena', 'Naidoo', 'Dlamini', 'Botha'] },
+];
+const reviewCopy = [
+  'The live price context makes it easier to review a setup before deciding what to do.',
+  'I can compare the signal families without losing track of the selected market.',
+  'It helps to have the current quote close to the signal history.',
+  'The risk reminders make the product limits clear while I explore the desk.',
+  'The page keeps Rise / Fall and digit setups easy to scan.',
+  'I can check the market first and make my own decision about any trade.',
+];
+
+function sampleReview(round: number, index: number) {
+  const country = reviewCountries[(round + index) % reviewCountries.length];
+  const firstName = country.first[(round * 3 + index) % country.first.length];
+  const lastName = country.last[(round * 2 + index) % country.last.length];
+  return { country: country.country, countryCode: country.code, name: `${firstName} ${lastName}`, text: reviewCopy[(round + index * 2) % reviewCopy.length] };
+}
+
+function ReviewCarousel() {
+  const [round, setRound] = useState(0);
+  const [paused, setPaused] = useState(false);
+  useEffect(() => {
+    if (paused) return;
+    const timer = window.setInterval(() => setRound(value => value + 1), 7200);
+    return () => clearInterval(timer);
+  }, [paused]);
+  const reviews = Array.from({ length: 4 }, (_, index) => sampleReview(round, index));
+  return <>
+    <div className="review-controls">
+      <p>Illustrative samples only. These names and statements are generated examples, not reviews from real customers.</p>
+      <div><button type="button" aria-label="Show next example set" onClick={() => setRound(value => value + 1)}>Next examples <span aria-hidden="true">↗</span></button>
+        <button type="button" aria-pressed={paused} onClick={() => setPaused(value => !value)}>{paused ? 'Resume rotation' : 'Pause rotation'}</button></div>
+    </div>
+    <div className="review-wall" aria-live="off">
+      {reviews.map((review, index) => <article className={`review-card review-v${((round + index) % 7) + 1}`} key={`${round}-${review.countryCode}-${index}`}>
+        <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><span className="review-count">EXAMPLE {String(index + 1).padStart(2, '0')}</span></div>
+        <p className="review-copy">{review.text}</p>
+        <div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>{review.name}</b><small>{review.country} · fictional profile</small></span></div>
+      </article>)}
+    </div>
+  </>;
+}
+
+const refundSections = [
+  { title: 'OVERVIEW', body: <>BrandyFx is committed to ensuring every trader's satisfaction with our AI-powered market analysis tool. This policy outlines the terms and conditions for requesting refunds on your purchase.</> },
+  { title: 'MONEY-BACK GUARANTEE', body: <>We offer a <strong>30-day money-back guarantee</strong> on all BrandyFx purchases. If you are not satisfied with the tool or our service within 30 days of purchase, you are eligible for a full refund.</>, highlight: <><strong>♛ Guaranteed:</strong> Full refund within 30 days of your purchase date. No complicated process. No questions asked.</> },
+  { title: 'REFUND ELIGIBILITY', body: <>To be eligible for a refund, the following conditions must be met:</>, list: ['Your request must be submitted within 30 days of the original purchase date', 'You must provide proof of payment (transaction hash or payment confirmation)', 'Your account must not have violated our Terms of Service', 'You have not shared or distributed access credentials to third parties'] },
+  { title: 'HOW TO REQUEST', body: <>Follow these steps to submit your refund request:</>, ordered: [<>Contact our support team at <a href="mailto:matchkingofficial@gmail.com">matchkingofficial@gmail.com</a> with the subject line <strong>"Refund Request"</strong></>, 'Provide the email address associated with your purchase and the date of purchase', 'Include your transaction hash or payment confirmation screenshot', 'Briefly explain your reason for the refund request', <>Our team will review your request and respond within <strong>3–5 business days</strong></>] },
+  { title: 'REFUND PROCESSING', body: <>Once your refund request is approved, we will process the refund to the original payment address. Please note the following timelines:</>, list: [<><strong>USDT (TRC20) Refunds:</strong> 24–48 hours after approval</>, <><strong>Bank Transfer Refunds:</strong> 3–5 business days after approval</>, 'The refund will be sent to the wallet address from which the original payment originated'] },
+  { title: 'NON-REFUNDABLE', body: 'The following are not eligible for refund:', list: ['Purchases made more than 30 days ago', 'Accounts suspended for Terms of Service violations', 'Duplicate or fraudulent transactions', 'Extended access plans purchased after the initial 30-day period'] },
+  { title: 'ACCOUNT DEACTIVATION', body: <>Upon successful refund processing, your BrandyFx account will be automatically deactivated. All access to the tool will be revoked and you will no longer be able to log in or access any previously downloaded resources.</> },
+  { title: 'PARTIAL REFUNDS', body: 'Partial refunds are only granted in the following circumstances:', list: ['Duplicate charges detected on your account', 'Service unavailability due to technical issues for extended periods (more than 7 days)', 'At the sole discretion of our support team for exceptional circumstances'] },
+  { title: 'DISPUTES & CHARGEBACKS', body: <>If you initiate a chargeback or dispute with your payment provider <strong>without contacting our support team first</strong>, your account will be permanently suspended and all access revoked immediately.</>, highlight: <> <strong>We strongly recommend</strong> contacting us directly at <a href="mailto:matchkingofficial@gmail.com">matchkingofficial@gmail.com</a> or via WhatsApp before pursuing any chargeback action. We will always work with you to find a fair resolution.</> },
+  { title: 'CONTACT US', body: <>If you have questions about this policy or need to submit a refund request, reach the BrandyFx team through any of these channels:</>, contacts: true },
 ];
 
 function tabHref(tab: string) {
@@ -106,7 +192,8 @@ function PackageCard({ tier, settings }: { tier: 'regular' | 'premium'; settings
 
 export default function Landing({ markets, tab, settings }: { markets: MarketSample[]; tab: string; settings: PublicSettings }) {
   const shownMarkets = markets.slice(0, 5);
-  const currentTab = tabs.some(([id]) => id === tab) ? tab : 'home';
+  const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
+  const currentTab = tabs.some(([id]) => id === tab) || pageTabs.includes(tab) ? tab : 'home';
   const live = shownMarkets.some(market => market.live);
   let content;
 
@@ -131,17 +218,34 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
   </section>;
   else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">From live ticks<br />to a considered trade.</h1><p>Keep context in view, then make your own decision.</p></header><div className="process-list">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div></section>;
   else if (currentTab === 'challenge') content = <section className="tab-page challenge-section" aria-labelledby="page-title"><div className="challenge-copy"><h1 id="page-title">Build consistency<br />one session at a time.</h1><p>Use a clear routine: wait for a setup, keep your limits visible, and review what happened after each session. BrandyFx helps you follow the signal flow; every trade decision stays yours.</p><div className="challenge-tags"><span>Deriv signals</span><span>Live tick context</span><span>Risk-aware decisions</span></div><a className="landing-secondary" href="/?preview">Explore the terminal</a></div><article className="challenge-card"><div className="challenge-glyph" aria-hidden="true">BF</div><h2>Discipline over impulse.</h2><p>Set a session limit. Take a break. Never trade with money you cannot afford to lose.</p></article></section>;
-  else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading review-heading"><div><h1 id="page-title">Notes from the<br />community.</h1><p>A sample of how country-tagged BrandyFx feedback will appear.</p></div><span className="review-sample-label">Fictional sample reviews</span></div><div className="review-wall">{reviewExamples.map((review, index) => <article className={`review-card review-v${(index % 7) + 1}`} key={`${review.country}-${index}`}><div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><span className="review-count">{String(index + 1).padStart(2, '0')}</span></div><p className="review-copy">{review.text}</p><div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>Sample trader</b><small>{review.country}</small></span></div></article>)}</div></section>;
+  else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
   else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Your signal desk.<br />Your terms.</h1><p>One-time access packages. Pay with USDT on TRC20.</p></header><div className="package-grid"><PackageCard tier="regular" settings={settings} /><PackageCard tier="premium" settings={settings} /></div><div className="payment-methods" role="list" aria-label="Payment methods"><article className="payment-option available" role="listitem"><span className="payment-symbol" aria-hidden="true">₮</span><span><b>USDT</b><small>TRON network · TRC20</small></span><strong>Available</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">▭</span><span><b>Card</b><small>Visa · Mastercard</small></span><strong>Coming soon</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">M</span><span><b>M-Pesa</b><small>Mobile money</small></span><strong>Coming soon</strong></article></div>{settings.trc20Wallet && <div className="wallet-address"><span>USDT · TRC20 wallet</span><code>{settings.trc20Wallet}</code></div>}<p className="pricing-note">Access is granted after the TRC20 payment reference is reviewed. Never send cryptocurrency to an address that is not displayed by BrandyFx.</p></section>;
-  else content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
+  else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
+  else if (currentTab === 'refund') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">Refund<br/>policy.</h1><p>Last Updated: January 27, 2026</p></header>
+    <div className="policy-guarantee"><b>♛</b><div><h2>Royal Guarantee</h2><p>We stand behind every purchase. If BrandyFx doesn't deliver, you get your money back — no runaround, no questions asked.</p></div><strong>48 HOURS<small>Back Guarantee</small></strong></div>
+    <div className="policy-sections">{refundSections.map((section, index) => <article className="policy-section" key={section.title}><div className="section-heading"><span>{String(index + 1).padStart(2, '0')}</span><i/><h2>{section.title}</h2></div><p>{section.body}</p>
+      {section.list && <ul>{section.list.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ul>}
+      {section.ordered && <ol>{section.ordered.map((item, itemIndex) => <li key={itemIndex}>{item}</li>)}</ol>}
+      {section.highlight && <aside>{section.highlight}</aside>}
+      {section.contacts && <div className="policy-contact-grid"><a href="mailto:matchkingofficial@gmail.com"><b>Email</b><span>matchkingofficial@gmail.com</span></a><a href="https://wa.me/254100137846" target="_blank" rel="noreferrer"><b>WhatsApp</b><span>wa.me/254100137846</span></a><a href="https://wa.me/254100137846" target="_blank" rel="noreferrer"><b>Telegram</b><span>@matchkingofficial</span></a></div>}
+    </article>)}</div><aside className="policy-update"><p><strong>♛ Policy Updates:</strong> BrandyFx reserves the right to update this refund policy at any time. Please check this page regularly for the latest information. Continued use of BrandyFx constitutes acceptance of our current refund policy.</p></aside>
+  </section>;
+  else if (currentTab === 'privacy' || currentTab === 'terms') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">{currentTab === 'privacy' ? <>Privacy<br/>policy.</> : <>Terms of<br/>service.</>}</h1></header><article className="legal-placeholder"><h2>{currentTab === 'privacy' ? 'Privacy policy is being prepared.' : 'Terms of service are being prepared.'}</h2><p>We’ll publish the complete BrandyFx document here before enabling paid access.</p></article></section>;
+  else content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Contact</p><h1 id="page-title">Reach<br/>BrandyFx.</h1><p>Use any configured channel to get in touch.</p></header><SocialLinks settings={settings} className="site-social-links-contact"/>{!socialMeta.some(({ key }) => socialHref(settings, key)) && <article className="legal-placeholder"><p>Contact channels will appear here once they are added in site settings.</p></article>}</section>;
 
   return <main className="landing">
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="landing-nav-actions"><a className="landing-primary" href="/?preview">Open signal desk <span aria-hidden="true">↗</span></a></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/?preview">Open signal desk <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
-    <footer className="landing-footer"><a className="landing-brand" href={tabHref('home')}><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a><p>Deriv signals for informed decisions.</p><small><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</small><span>© BrandyFx</span></footer>
+    <footer className="landing-footer">
+      <section className="footer-brand-block"><a className="landing-brand" href={tabHref('home')}><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></a><p>Deriv signal intelligence for informed decisions.</p><SocialLinks settings={settings} className="site-social-links-footer"/></section>
+      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('intelligence')}>Intelligence</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/?preview">Access terminal</a></nav>
+      <nav className="footer-link-group" aria-label="Community"><h2>Community</h2><a href={tabHref('reviews')}>Read reviews</a>{socialMeta.filter(({ key }) => key !== 'socialEmail' && socialHref(settings, key)).map(({ key, label }) => <a key={key} href={socialHref(settings, key)} target="_blank" rel="noreferrer">{label}</a>)}<a href={tabHref('contact')}>Contact</a></nav>
+      <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
+      <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>
+    </footer>
   </main>;
 }

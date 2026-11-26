@@ -25,6 +25,7 @@ const defaultSettings: PublicSettings = {
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerActive: false, offerEndsAt: '',
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
+  socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
 };
 const fixtureMarkets: Market[] = ['10', '25', '50', '75', '100'].map((index, market) => {
   const points = Array.from({ length: 64 }, (_, i) =>
@@ -276,6 +277,11 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
         <label className="admin-check"><input name="offerEnabled" type="checkbox" defaultChecked={settings.offerActive}/> Enable launch offer</label>
         <div className="admin-field-grid"><label>Offer end date/time<input name="offerEndsAt" type="datetime-local" defaultValue={settings.offerEndsAt ? new Date(settings.offerEndsAt).toISOString().slice(0, 16) : ''}/></label><label>Promotion heading<input name="promoHeading" maxLength={90} defaultValue={settings.promoHeading} required/></label></div>
         <label>Promotion subheading<input name="promoSubheading" maxLength={140} defaultValue={settings.promoSubheading} required/></label>
+      </section>
+      <section className="admin-setting-panel"><p className="landing-kicker">Contact channels</p><h2>Socials & support</h2><p className="admin-panel-note">Add only channels clients can use. Saved links appear as icons in the site header and footer.</p>
+        <div className="admin-field-grid"><label>Email address<input name="socialEmail" type="email" autoComplete="email" defaultValue={settings.socialEmail} placeholder="hello@brandyfx.com"/></label><label>WhatsApp link<input name="socialWhatsApp" type="url" defaultValue={settings.socialWhatsApp} placeholder="https://wa.me/254…"/></label>
+          <label>Telegram link<input name="socialTelegram" type="url" defaultValue={settings.socialTelegram} placeholder="https://t.me/…"/></label><label>Instagram link<input name="socialInstagram" type="url" defaultValue={settings.socialInstagram} placeholder="https://instagram.com/…"/></label></div>
+        <small className="admin-panel-note">WhatsApp, Telegram and Instagram links must use HTTPS and their official domains.</small>
       </section>
       <section className="admin-setting-panel"><p className="landing-kicker">Payments</p><h2>USDT · TRC20</h2><label>TRC20 wallet address<input name="trc20Wallet" autoComplete="off" defaultValue={settings.trc20Wallet} placeholder="T…"/><small>Shown publicly on the pricing page when configured. Card and M-Pesa remain marked coming soon.</small></label></section>
       {(error || saved) && <p className={error ? 'admin-message error' : 'admin-message'} role={error ? 'alert' : 'status'}>{error || saved}</p>}

@@ -25,6 +25,7 @@ const DEFAULT_SITE_SETTINGS = {
   regularPrice: 300, premiumPrice: 450, regularOffer: 200, premiumOffer: 300,
   regularDays: 0, premiumDays: 0, offerEnabled: false, offerEndsAt: '',
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
+  socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
 };
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('base64url');
@@ -77,7 +78,9 @@ async function siteSettings() {
     regularPrice: settings.regularPrice, premiumPrice: settings.premiumPrice, regularOffer: settings.regularOffer,
     premiumOffer: settings.premiumOffer, regularDays: settings.regularDays, premiumDays: settings.premiumDays,
     offerActive: Boolean(settings.offerEnabled && Number.isFinite(ends) && ends > Date.now()), offerEndsAt: settings.offerEndsAt,
-    promoHeading: settings.promoHeading, promoSubheading: settings.promoSubheading, trc20Wallet: settings.trc20Wallet };
+    promoHeading: settings.promoHeading, promoSubheading: settings.promoSubheading, trc20Wallet: settings.trc20Wallet,
+    socialEmail: settings.socialEmail || '', socialWhatsApp: settings.socialWhatsApp || '',
+    socialTelegram: settings.socialTelegram || '', socialInstagram: settings.socialInstagram || '' };
 }
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
@@ -285,6 +288,15 @@ async function api(req, res, url) {
     const days = value => Number.isInteger(value) && value >= 0 && value <= 365;
     const validBackground = typeof input.backgroundUrl === 'string' && (input.backgroundUrl.startsWith('/media/') && !input.backgroundUrl.includes('..') || (() => { try { return new URL(input.backgroundUrl).protocol === 'https:'; } catch { return false; } })());
     const validWallet = input.trc20Wallet === '' || (typeof input.trc20Wallet === 'string' && /^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(input.trc20Wallet));
+    const validEmail = input.socialEmail === '' || (typeof input.socialEmail === 'string' && input.socialEmail.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.socialEmail));
+    const validSocialUrl = (value, hosts) => {
+      if (value === '') return true;
+      if (typeof value !== 'string' || value.length > 500) return false;
+      try { const url = new URL(value); return url.protocol === 'https:' && hosts.some(host => url.hostname === host || url.hostname === `www.${host}`); }
+      catch { return false; }
+    };
+    const validSocials = validEmail && validSocialUrl(input.socialWhatsApp, ['wa.me', 'api.whatsapp.com']) &&
+      validSocialUrl(input.socialTelegram, ['t.me', 'telegram.me']) && validSocialUrl(input.socialInstagram, ['instagram.com']);
     const endTime = input.offerEndsAt === '' ? 0 : new Date(input.offerEndsAt).getTime();
     const offerEndsAt = input.offerEndsAt === '' ? '' : Number.isFinite(endTime) ? new Date(endTime).toISOString() : '';
     if (!validBackground || !price(input.regularPrice) || !price(input.premiumPrice) || !price(input.regularOffer) || !price(input.premiumOffer) ||
@@ -292,11 +304,13 @@ async function api(req, res, url) {
       typeof input.offerEnabled !== 'boolean' || !['videoOpacity','glassOpacity'].every(key => typeof input[key] === 'number' && input[key] >= 0.1 && input[key] <= 0.9) ||
       typeof input.promoHeading !== 'string' || !input.promoHeading.trim() || input.promoHeading.length > 90 || typeof input.promoSubheading !== 'string' || !input.promoSubheading.trim() || input.promoSubheading.length > 140 || !validWallet ||
       input.offerEndsAt !== '' && !Number.isFinite(new Date(input.offerEndsAt).getTime()) ||
-      input.offerEnabled && (!offerEndsAt || endTime <= Date.now())) throw error(400, 'Check the prices, terms, media URL, offer end time and TRC20 address.');
+      input.offerEnabled && (!offerEndsAt || endTime <= Date.now()) || !validSocials) throw error(400, 'Check the prices, terms, media URL, offer end time, TRC20 address and contact links.');
     const settings = { backgroundUrl: input.backgroundUrl, videoOpacity: input.videoOpacity, glassOpacity: input.glassOpacity,
       regularPrice: input.regularPrice, premiumPrice: input.premiumPrice, regularOffer: input.regularOffer, premiumOffer: input.premiumOffer,
       regularDays: input.regularDays, premiumDays: input.premiumDays, offerEnabled: input.offerEnabled, offerEndsAt,
-      promoHeading: input.promoHeading.trim(), promoSubheading: input.promoSubheading.trim(), trc20Wallet: input.trc20Wallet };
+      promoHeading: input.promoHeading.trim(), promoSubheading: input.promoSubheading.trim(), trc20Wallet: input.trc20Wallet,
+      socialEmail: input.socialEmail.trim(), socialWhatsApp: input.socialWhatsApp.trim(),
+      socialTelegram: input.socialTelegram.trim(), socialInstagram: input.socialInstagram.trim() };
     await db.query('INSERT INTO site_settings(id,settings) VALUES(true,$1::jsonb) ON CONFLICT(id) DO UPDATE SET settings=$1::jsonb', [JSON.stringify(settings)]);
     return json(res, 200, await siteSettings());
   }
