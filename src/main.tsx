@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import Landing from './landing';
 import './theme.css';
 
 type Market = { symbol: string; name: string; quote: string; points: string[]; updated: string; live: boolean };
@@ -11,7 +12,9 @@ type Order = Payment & { account_id: string; reference: string; amount: string; 
 type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
-const preview = new URLSearchParams(location.search).has('preview');
+const route = new URLSearchParams(location.search);
+const preview = route.has('preview');
+const home = route.has('home');
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
 const name = (market: Market) => market.name.replace('Volatility ', 'Vol ').replace(' Index', '');
@@ -247,7 +250,7 @@ const loginMessage: Record<string, string> = {
 function App() {
   const markets = useMarkets();
   const [member, setMember] = useState<Member>({});
-  const [loaded, setLoaded] = useState(preview);
+  const [loaded, setLoaded] = useState(preview || home);
   const [tab, setTab] = useState('desk');
   const [signals, setSignals] = useState<Signal[]>([]);
   const [connected, setConnected] = useState(false);
@@ -265,7 +268,7 @@ function App() {
     }
   }
   useEffect(() => {
-    if (preview) return;
+    if (preview || home) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
@@ -299,7 +302,8 @@ function App() {
   }
   const showingDesk = preview || (canView && tab === 'desk');
   let page: ReactNode;
-  if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
+  if (home) page = <Landing markets={markets} />;
+  else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
   else if (showingDesk) page = <Desk markets={markets} signals={preview ? fixtureSignals : signals} connected={preview || connected} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
   else if (member.account) page = <Access member={member} run={run} />;
@@ -314,7 +318,7 @@ function App() {
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
-      <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?preview')}>Log in with Deriv</button>
+      <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?home')}>Log in with Deriv</button>
       <div className="login-divider"><span>or</span></div>
       <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
       <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
@@ -326,7 +330,7 @@ function App() {
       <source src="/media/brandyfx-background.mp4" type="video/mp4" />
     </video>
   </div><div className="backdrop-shade" aria-hidden="true" />
-  {showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/"><Mark />BrandyFx</a>
+  {home ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
@@ -338,6 +342,7 @@ function App() {
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
     {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
+    </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setTokenDialog(false); }}>
       <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
         <button className="dialog-close" type="button" aria-label="Close" onClick={() => setTokenDialog(false)}>×</button>
