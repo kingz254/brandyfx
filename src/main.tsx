@@ -341,18 +341,28 @@ function App() {
     if (!DEVELOPMENT_SIGNAL_SIMULATION || home || adminRoute) return;
     setSignals([]);
     setConnected(true);
-    const interval = window.setInterval(() => {
-      const market = fixtureMarkets[Math.floor(Math.random() * fixtureMarkets.length)];
-      const family = families[Math.floor(Math.random() * families.length)][0];
-      const label = family === 'evenOdd' ? (Math.random() < .5 ? 'Even' : 'Odd') : family === 'range' ? (Math.random() < .5 ? 'Over 6' : 'Under 3') : 'Matches';
-      const signal: Signal = {
-        id: Math.floor(Date.now() + Math.random() * 1000), symbol: market.symbol, family, label,
-        digit: family === 'digit' ? Math.floor(Math.random() * 10) : family === 'range' ? (label === 'Over 6' ? 6 : 3) : null,
-        issued: new Date().toISOString(), expires: until(50000),
-      };
-      setSimulatedSignals(current => [...current.filter(item => +new Date(item.expires) > Date.now()), signal]);
-    }, 55000);
-    return () => window.clearInterval(interval);
+    let timer: number;
+    const generateRound = () => {
+      const issued = Date.now();
+      const signals = families.map(([family]) => {
+        const market = fixtureMarkets[Math.floor(Math.random() * fixtureMarkets.length)];
+        const label = family === 'evenOdd' ? (Math.random() < .5 ? 'Even' : 'Odd') :
+          family === 'range' ? (Math.random() < .5 ? 'Over 6' : 'Under 3') : 'Matches';
+        return {
+          id: Math.floor(issued + Math.random() * 1000), symbol: market.symbol, family, label,
+          digit: family === 'digit' ? Math.floor(Math.random() * 10) :
+            family === 'range' ? (label === 'Over 6' ? 6 : 3) : null,
+          issued: new Date(issued).toISOString(), expires: new Date(issued + 50000).toISOString(),
+        };
+      });
+      setSimulatedSignals(current => [
+        ...current.filter(item => +new Date(item.expires) > issued),
+        ...signals,
+      ]);
+      timer = window.setTimeout(generateRound, 20000 + Math.floor(Math.random() * 25001));
+    };
+    generateRound();
+    return () => window.clearTimeout(timer);
   }, []);
   async function refresh() {
     try {
