@@ -7,9 +7,10 @@ import './theme.css';
 type Market = { symbol: string; name: string; quote: string; points: string[]; updated: string; live: boolean };
 type Signal = { id: number; symbol: string; family: string; label: string; digit: number | null; issued: string; expires: string };
 type Offer = { amount: string; currency: string; days: number; instructions: string };
-type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string };
-type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string };
-type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; offer?: Offer };
+type Profile = { name: string; email: string; country: string; rot_number: string };
+type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string; package?: string; reference?: string; amount?: string; currency?: string };
+type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string };
+type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['trend', 'Rise / Fall'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches / Differs']] as const;
 const route = new URLSearchParams(location.search);
@@ -184,28 +185,20 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
   </main>;
 }
 
-function Access({ member, run, settings }: { member: Member; run: (path: string, data?: object) => Promise<boolean>; settings: PublicSettings }) {
-  const [reference, setReference] = useState('');
-  const [tier, setTier] = useState<'riseFall' | 'overUnder' | 'matches'>('riseFall');
+function Access({ member }: { member: Member }) {
   const payment = member.payment;
-  const amount = settings.offerActive ? settings[`${tier}Offer`] : settings[`${tier}Price`];
-  const days = settings[`${tier}Days`];
-  const planLabels = { riseFall: 'Rise / Fall', overUnder: 'Over 6 / Under 3', matches: 'Matches only' };
+  const planNames: Record<string, string> = { riseFall: 'Rise / Fall · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
   const status = member.passUntil ? 'Pass active' : payment?.revoked_at ? 'Pass revoked' :
-    payment?.status === 'pending' ? 'Approval pending' : payment?.status === 'approved' ? 'Pass expired' :
+    payment?.status === 'pending' ? 'Payment awaiting review' : payment?.status === 'approved' ? 'Pass expired' :
       payment?.status === 'declined' ? 'Request declined' : 'Deriv connected';
   return <main className="access layout">
-    <div><p className="status">{status}</p><h1>Get desk access</h1><p>Submit your payment reference for review.</p></div>
-    <section className="access-panel">
-      {!member.launched ? <><h2>Paid access is opening soon</h2><p>Payment instructions will appear here when passes go on sale.</p></>
-        : <><div className="access-plan-switch" role="group" aria-label="Choose access plan">{(Object.keys(planLabels) as Array<keyof typeof planLabels>).map(key => <button key={key} type="button" aria-pressed={tier === key} onClick={() => setTier(key)}>{planLabels[key]}</button>)}</div><h2>{planLabels[tier]} · USD {amount.toFixed(2)} <small>{days ? `for ${days} ${days === 1 ? 'day' : 'days'}` : 'access term is being configured'}</small></h2>
-          {payment?.status === 'pending' ? <p>Your payment reference is being reviewed. This page updates when the review is complete.</p>
-            : <><p className="instructions">Send USDT using the TRON (TRC20) network to:<br/><strong>{settings.trc20Wallet || 'Wallet address will be published here before launch.'}</strong></p>{(!days || !settings.trc20Wallet) && <p>Payment instructions will be enabled when the access term and wallet address are configured.</p>}<form onSubmit={async event => {
-              event.preventDefault();
-              if (await run('payment', { reference, package: tier })) setReference('');
-            }}><label>Payment reference<input value={reference} onChange={event => setReference(event.target.value)} minLength={5} maxLength={80} required /></label>
-              <button className="primary" disabled={!days || !settings.trc20Wallet}>Submit for review</button></form></>}
-        </>}
+    <div><p className="status">{status}</p><h1>Your BrandyFx access</h1><p>Payment requests and your saved client details are shown here.</p></div>
+    <section className="access-panel client-records">
+      {!member.launched && <><h2>Paid access is opening soon</h2><p>Payment instructions will be available after BrandyFx completes its launch setup.</p></>}
+      {member.profile ? <section className="client-profile"><h2>Client details</h2><dl><div><dt>Name</dt><dd>{member.profile.name}</dd></div><div><dt>Email</dt><dd>{member.profile.email}</dd></div><div><dt>Country</dt><dd>{member.profile.country}</dd></div><div><dt>ROT / Deriv number</dt><dd>{member.profile.rot_number}</dd></div></dl></section>
+        : <p>No checkout profile is saved to this Deriv account yet.</p>}
+      {payment && <section className="client-payment"><h2>Latest payment</h2><p><strong>{planNames[payment.package || ''] || payment.package}</strong> · {payment.currency} {Number(payment.amount || 0).toFixed(2)}</p><p>Status: {payment.revoked_at ? 'Revoked' : payment.status}</p>{payment.reference && <p>Transaction hash: <code>{payment.reference}</code></p>}</section>}
+      <a className="landing-primary" href="/?home&tab=pricing">Browse access plans <span aria-hidden="true">↗</span></a>
     </section>
   </main>;
 }
@@ -287,11 +280,37 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
           <label>Telegram link<input name="socialTelegram" type="url" defaultValue={settings.socialTelegram} placeholder="https://t.me/…"/></label><label>Instagram link<input name="socialInstagram" type="url" defaultValue={settings.socialInstagram} placeholder="https://instagram.com/…"/></label></div>
         <small className="admin-panel-note">WhatsApp, Telegram and Instagram links must use HTTPS and their official domains.</small>
       </section>
-      <section className="admin-setting-panel"><p className="landing-kicker">Payments</p><h2>USDT · TRC20</h2><label>TRC20 wallet address<input name="trc20Wallet" autoComplete="off" defaultValue={settings.trc20Wallet} placeholder="T…"/><small>Shown publicly on the pricing page when configured. Card and M-Pesa remain marked coming soon.</small></label></section>
+      <section className="admin-setting-panel"><p className="landing-kicker">Payments</p><h2>USDT · TRC20</h2><label>TRC20 wallet address<input name="trc20Wallet" autoComplete="off" defaultValue={settings.trc20Wallet} placeholder="T…"/><small>Shown publicly in the checkout window. Clients send proof through the WhatsApp contact configured above.</small></label></section>
       {(error || saved) && <p className={error ? 'admin-message error' : 'admin-message'} role={error ? 'alert' : 'status'}>{error || saved}</p>}
       <div className="site-admin-actions"><button className="landing-primary" disabled={busy}>{busy ? 'Saving…' : 'Save site settings'}</button><button type="button" className="landing-secondary" onClick={() => void run('logout')}>Sign out</button></div>
     </form>
+    <PaymentRecords run={run} />
   </main>;
+}
+
+function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise<boolean> }) {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loadError, setLoadError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const load = async () => {
+    setLoading(true);
+    try { setOrders(await api<Order[]>('admin/payments')); setLoadError(''); }
+    catch (cause) { setLoadError((cause as Error).message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void load(); }, []);
+  const planNames: Record<string, string> = { riseFall: 'Rise / Fall · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
+  return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client orders</p><h2>Payment records</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
+    <p className="admin-panel-note">Verify each TRC20 transaction hash before approving access. The selected package determines its term and signal entitlement.</p>
+    {loadError && <p className="admin-message error" role="alert">{loadError}</p>}
+    {!loadError && !orders.length && <p>No payment records yet.</p>}
+    {!!orders.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Deriv / ROT</th><th>Package</th><th>Paid</th><th>Transaction hash</th><th>Status</th><th>Review</th></tr></thead>
+      <tbody>{orders.map(order => <tr key={order.id}><td><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
+        <td>{order.rot_number || order.account_id}</td><td>{planNames[order.package] || order.package}<small>{order.days} days</small></td><td>{order.currency} {Number(order.amount).toFixed(2)}</td>
+        <td><code>{order.reference}</code></td><td><span className={`record-status record-${order.revoked_at ? 'revoked' : order.status}`}>{order.revoked_at ? 'Revoked' : order.status}</span></td>
+        <td>{order.status === 'pending' ? <div className="record-actions"><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></div> : <small>{order.expires ? `Until ${dateLabel(order.expires)}` : order.status}</small>}</td>
+      </tr>)}</tbody></table></div>}
+  </section>;
 }
 
 function AdminLogin({ pending, notice, run }: { pending: boolean; notice: string; run: (path: string, data?: object) => Promise<boolean> }) {
@@ -386,7 +405,7 @@ function App() {
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
   else if (showingDesk) page = <Desk markets={markets} signals={preview ? fixtureSignals : signals} connected={preview || connected} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
-  else if (member.account) page = <Access member={member} run={run} settings={settings} />;
+  else if (member.account) page = <Access member={member} />;
   else if (member.accounts?.length) page = <main className="layout access"><div><h1>Choose an account</h1>
     <p>Use the same Deriv account each time to keep your pass.</p></div><section className="access-panel account-list">
       {member.accounts.map(account => <button className="quiet" key={account} disabled={pending} onClick={() => void run('account', { account })}>{account}</button>)}

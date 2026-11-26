@@ -242,10 +242,12 @@ async function api(req, res, url) {
   const account = state?.account_id;
   const admin = adminIds.has(account) || passwordAdmin;
   if (method === 'GET' && path === '/api/me') {
-    const payment = account ? await one(`SELECT id,status,created,expires,revoked_at FROM payments
+    const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,package,reference,amount,currency FROM payments
       WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
+    const profile = account ? await one(`SELECT customer_name AS name,customer_email AS email,customer_country AS country,rot_number
+      FROM payments WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
     return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, admin,
-      accounts: account ? undefined : state?.accounts, passUntil: state?.pass_until, payment, offer: account ? await offer() : null });
+      accounts: account ? undefined : state?.accounts, passUntil: state?.pass_until, payment, profile, offer: account ? await offer() : null });
   }
   if (method === 'POST' && path === '/api/logout') {
     if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);
@@ -262,29 +264,35 @@ async function api(req, res, url) {
     res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000)), requestBase.protocol === 'https:'));
     return json(res, 200, {});
   }
-  if (!account && !admin) throw error(401, 'Sign in with Deriv.');
   if (method === 'POST' && path === '/api/payment') {
-    if (!account) throw error(401, 'Sign in with Deriv.');
     if (!approved) throw error(409, 'Paid access is awaiting launch.');
-    const { reference, package: tier = 'regular' } = await body(req);
-    if (typeof reference !== 'string' || !/^[A-Za-z0-9-]{5,80}$/.test(reference.trim())) throw error(400, 'Enter a valid payment reference.');
+    const input = await body(req);
+    const { package: tier, name, email, country, rotNumber } = input;
+    const reference = input.transactionHash;
+    if (typeof reference !== 'string' || !/^[A-Fa-f0-9]{64}$/.test(reference.trim())) throw error(400, 'Enter a valid 64-character TRON transaction hash.');
     if (!['riseFall', 'overUnder', 'matches'].includes(tier)) throw error(400, 'Choose a valid access plan.');
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
+      typeof country !== 'string' || !country.trim() || country.trim().length > 90 || typeof rotNumber !== 'string' || !/^[A-Za-z0-9-]{3,40}$/.test(rotNumber.trim())) throw error(400, 'Enter your name, a valid email, country and Deriv ROT number.');
+    const rot = rotNumber.trim().toUpperCase();
+    if (account && rot !== account) throw error(400, 'Use the Deriv account number that is signed in.');
     const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
           THEN CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
           ELSE CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
         CASE $3 WHEN 'riseFall' THEN (settings->>'riseFallDays')::integer WHEN 'overUnder' THEN (settings->>'overUnderDays')::integer ELSE (settings->>'matchesDays')::integer END AS days FROM settings)
-      INSERT INTO payments(account_id,reference,amount,currency,days,package)
-      SELECT $1,$2,amount,'USD',days,$3 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
+      INSERT INTO payments(account_id,reference,amount,currency,days,package,customer_name,customer_email,customer_country,rot_number)
+      SELECT $1,$2,amount,'USDT',days,$3,$4,$5,$6,$1 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
-      ON CONFLICT DO NOTHING RETURNING id`, [account, reference.trim().toUpperCase(), tier]);
-    if (!result) throw error(409, 'The reference was already submitted, a request is pending, or there is no active offer.');
+      ON CONFLICT DO NOTHING RETURNING id`, [rot, reference.trim().toUpperCase(), tier, name.trim(), email.trim().toLowerCase(), country.trim()]);
+    if (!result) throw error(409, 'This hash is already recorded, a payment is pending for this Deriv account, or the access term needs setup.');
     return json(res, 201, result);
   }
+  if (!account && !admin) throw error(401, 'Sign in with Deriv.');
   if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
   if (!admin) throw error(403, 'Administrator access required.');
   if (method === 'GET' && path === '/api/admin/payments') {
-    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at
+    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,
+      customer_name,customer_email,customer_country,rot_number
       FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 100`));
   }
   if (method === 'GET' && path === '/api/admin/site-settings') return json(res, 200, await siteSettings());
@@ -340,7 +348,8 @@ async function api(req, res, url) {
     };
     if (typeof action !== 'string' || !Object.hasOwn(operations, action)) throw error(400, 'Invalid action.');
     if (action === 'extend' && (!Number.isInteger(days) || days < 1 || days > 365)) throw error(400, 'Enter an extension of 1 to 365 days.');
-    const args = action === 'extend' ? [paymentId, account, days, action] : [paymentId, account, action];
+    const adminActor = account || (passwordAdmin ? 'password-admin' : null);
+    const args = action === 'extend' ? [paymentId, adminActor, days, action] : [paymentId, adminActor, action];
     const changed = await one(`WITH changed AS (UPDATE payments ${operations[action]} RETURNING id,expires)
       INSERT INTO pass_audit(payment_id,actor,action,expires) SELECT id,$2,$${args.length},expires FROM changed RETURNING payment_id`, args);
     if (!changed && action === 'approve' && await one("SELECT id FROM payments WHERE id=$1 AND status='approved'", [paymentId])) return json(res, 200, {});

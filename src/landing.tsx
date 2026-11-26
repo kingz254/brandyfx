@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 
 export type MarketSample = { symbol: string; name: string; quote: string; updated: string; live: boolean };
 export type PublicSettings = {
@@ -85,9 +86,9 @@ const freeBots = [
 ];
 
 const planCards = [
-  { key: 'riseFall', title: 'Rise / Fall', name: 'Rise / Fall Desk', description: 'Access focused on directional Rise/Fall signals.', bot: 'Mavic Rise/Fall', highlight: 'Directional signals' },
-  { key: 'overUnder', title: 'Over 6 / Under 3', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', bot: 'Turbo O/U', highlight: 'Digit thresholds' },
-  { key: 'matches', title: 'Matches only', name: 'Matches Desk', description: 'Access focused on Matches digit signals.', bot: 'Core Bot V3', highlight: 'Matches signals' },
+  { key: 'riseFall', title: 'Rise / Fall', tier: 'REGULAR ACCESS', name: 'Rise / Fall Desk', description: 'Access focused on directional Rise/Fall signals.', bot: 'Mavic Rise/Fall', highlight: 'Directional signals', vip: false },
+  { key: 'overUnder', title: 'Over 6 / Under 3', tier: 'REGULAR ACCESS', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', bot: 'Turbo O/U', highlight: 'Digit thresholds', vip: false },
+  { key: 'matches', title: 'Matches only', tier: 'PREMIUM · V.I.P ONLY', name: 'Matches V.I.P. Desk', description: 'Exclusive Matches signals with the BrandyFx V.I.P. support circle.', bot: 'Core Bot V3', highlight: 'Matches signals', vip: true },
 ] as const;
 
 const steps = [
@@ -181,14 +182,14 @@ function Countdown({ endsAt }: { endsAt: string }) {
   </div>;
 }
 
-function PackageCard({ plan, settings }: { plan: (typeof planCards)[number]; settings: PublicSettings }) {
+function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[number]; settings: PublicSettings; onCheckout: () => void }) {
   const base = settings[`${plan.key}Price`];
   const offer = settings[`${plan.key}Offer`];
   const amount = settings.offerActive ? offer : base;
   const discount = settings.offerActive && base > 0 ? Math.max(0, Math.round((base - offer) * 100 / base)) : 0;
   const days = settings[`${plan.key}Days`];
   return <article className={`package-card${plan.key === 'matches' ? ' premium-package' : ''}`}>
-    <span className="package-tag">{plan.title}</span>
+    <span className="package-tag">{plan.tier}</span><h2 className="package-name">{plan.title}</h2>
     {settings.offerActive && <><div className="package-promo"><span>{settings.promoHeading}</span></div><p className="package-promo-sub">{settings.promoSubheading}</p></>}
     <div className="package-price">
       {discount > 0 && <span className="package-discount">{discount}% OFF</span>}
@@ -203,13 +204,81 @@ function PackageCard({ plan, settings }: { plan: (typeof planCards)[number]; set
       <li>One free Pipforge bot: {plan.bot}</li>
       <li>Risk reminders and your own trade decisions</li>
       <li>{days > 0 ? `${days} days of access` : 'Access term set by BrandyFx'}</li>
+      {plan.vip && <><li>Private V.I.P. WhatsApp channel</li><li>Priority WhatsApp contact with faster responses</li><li>Educational tips on earning workflows with third-party Deriv apps and partnership information; no earnings are guaranteed</li></>}
     </ul>
-    <a className="landing-primary package-action" href="/">Continue with Deriv <span aria-hidden="true">↗</span></a>
-    <small>TRC20 accepted · Card and M-Pesa coming soon</small>
+    <button className="landing-primary package-action" type="button" onClick={onCheckout}>Pay with USDT <span aria-hidden="true">↗</span></button>
+    <a className="package-refund-link" href={tabHref('refund')}>Refunds are available to every client · Read policy ↗</a>
+    <small>Card and M-Pesa coming soon</small>
   </article>;
 }
 
+function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[number]; settings: PublicSettings; onClose: () => void }) {
+  const base = settings[`${plan.key}Price`];
+  const amount = settings.offerActive ? settings[`${plan.key}Offer`] : base;
+  const [form, setForm] = useState({ name: '', email: '', country: '', rotNumber: '', transactionHash: '' });
+  const [orderId, setOrderId] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => { window.removeEventListener('keydown', closeOnEscape); document.body.style.overflow = previousOverflow; };
+  }, [onClose]);
+  const whatsappProof = () => {
+    if (!settings.socialWhatsApp || !orderId) return '';
+    try {
+      const url = new URL(settings.socialWhatsApp);
+      const message = `Hi Brandy, my name is ${form.name.trim()} and I have paid USD ${amount.toFixed(2)} in USDT for ${plan.title}. Country: ${form.country.trim()}. Deriv/ROT number: ${form.rotNumber.trim().toUpperCase()}. Email: ${form.email.trim()}. Transaction hash: ${form.transactionHash.trim().toUpperCase()}. Order: ${orderId}.`;
+      url.searchParams.set('text', message);
+      return url.toString();
+    } catch { return ''; }
+  };
+  async function copyWallet() {
+    try { await navigator.clipboard.writeText(settings.trc20Wallet); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
+    catch { setError('Copy is unavailable here. Select and copy the TRC20 address.'); }
+  }
+  async function saveOrder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const response = await fetch('/api/payment', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package: plan.key, amount, name: form.name, email: form.email, country: form.country, rotNumber: form.rotNumber, transactionHash: form.transactionHash }) });
+      const text = await response.text();
+      const data = JSON.parse(text) as { id?: string; error?: string };
+      if (!response.ok) throw new Error(data.error || 'Please check your details and try again.');
+      setOrderId(data.id || '');
+    } catch (cause) { setError((cause as Error).message || 'Could not save your order.'); }
+    finally { setBusy(false); }
+  }
+  return <div className="purchase-scrim" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
+    <section className="purchase-dialog" role="dialog" aria-modal="true" aria-labelledby="purchase-title">
+      <header className="purchase-heading"><div><p className="landing-kicker">PAYMENT · TRC20</p><h2 id="purchase-title">{plan.name} — ${amount.toFixed(2)}</h2></div><button type="button" className="purchase-close" onClick={onClose} aria-label="Close payment window">×</button></header>
+      {orderId ? <div className="purchase-confirmation"><p className="purchase-step">02 · CONFIRM WITH BRANDYFX</p><h3>Your payment details are saved.</h3><p>Reference <strong>{orderId}</strong> is in the admin review list. Send the transaction hash to BrandyFx on WhatsApp to complete your proof.</p>
+        {whatsappProof() ? <a className="purchase-submit" href={whatsappProof()} target="_blank" rel="noreferrer">Send proof via WhatsApp <span aria-hidden="true">↗</span></a> : <p className="purchase-error">WhatsApp contact is not configured yet. Add the business WhatsApp link in <a href="/kingz.html">Site settings</a>.</p>}
+        <button className="landing-secondary" type="button" onClick={onClose}>Close</button></div> : <>
+        <div className="purchase-steps"><span aria-current="step">01 · PAYMENT</span><span>02 · VERIFY</span></div>
+        <p className="purchase-intro">Send exactly <strong>${amount.toFixed(2)} USDT</strong> using the TRON network (TRC20), then save your details.</p>
+        <div className="purchase-address"><span>USDT TRC20 ADDRESS</span><code>{settings.trc20Wallet || 'Wallet address will be published before payments open.'}</code><button type="button" onClick={() => void copyWallet()} disabled={!settings.trc20Wallet}>{copied ? 'COPIED' : 'COPY'}</button></div>
+        <p className="purchase-warning">⚠ Send USDT on the TRON (TRC20) network only. Transfers on other networks cannot be processed.</p>
+        <form className="purchase-form" onSubmit={saveOrder}>
+          <label>Your name<input autoComplete="name" maxLength={100} value={form.name} onChange={event => setForm({ ...form, name: event.target.value })} required /></label>
+          <label>Your email<input type="email" autoComplete="email" maxLength={254} value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} required /></label>
+          <label>Country<input autoComplete="country-name" maxLength={90} value={form.country} onChange={event => setForm({ ...form, country: event.target.value })} required /></label>
+          <label>Deriv ROT / account number<input autoComplete="off" maxLength={40} value={form.rotNumber} onChange={event => setForm({ ...form, rotNumber: event.target.value })} required /><small>Use the Deriv account ID you will use to sign in.</small></label>
+          <label className="purchase-hash">Transaction hash<input autoComplete="off" minLength={64} maxLength={64} pattern="[A-Fa-f0-9]{64}" value={form.transactionHash} onChange={event => setForm({ ...form, transactionHash: event.target.value })} placeholder="64-character TRON transaction hash" required /></label>
+          {error && <p className="purchase-error" role="alert">{error}</p>}
+          <button className="purchase-submit" disabled={busy || !settings.trc20Wallet || !settings.socialWhatsApp || !settings[`${plan.key}Days`]}>{busy ? 'Saving…' : 'Save details & continue'} <span aria-hidden="true">→</span></button>
+          {(!settings.trc20Wallet || !settings.socialWhatsApp || !settings[`${plan.key}Days`]) && <small className="purchase-config-note">Payments open after BrandyFx configures the wallet, WhatsApp contact and access term in site settings.</small>}
+        </form>
+      </>}
+    </section>
+  </div>;
+}
+
 export default function Landing({ markets, tab, settings }: { markets: MarketSample[]; tab: string; settings: PublicSettings }) {
+  const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
   const shownMarkets = markets.slice(0, 5);
   const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
   const currentTab = tabs.some(([id]) => id === tab) || pageTabs.includes(tab) ? tab : 'home';
@@ -243,7 +312,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
   else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">From live ticks<br />to a considered trade.</h1><p>Keep context in view, then make your own decision.</p></header><div className="process-list">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div></section>;
   else if (currentTab === 'challenge') content = <section className="tab-page challenge-section" aria-labelledby="page-title"><div className="challenge-copy"><h1 id="page-title">Build consistency<br />one session at a time.</h1><p>Use a clear routine: wait for a setup, keep your limits visible, and review what happened after each session. BrandyFx helps you follow the signal flow; every trade decision stays yours.</p><div className="challenge-tags"><span>Deriv signals</span><span>Live tick context</span><span>Risk-aware decisions</span></div><a className="landing-secondary" href="/?preview">Explore the terminal</a></div><article className="challenge-card"><div className="challenge-glyph" aria-hidden="true">BF</div><h2>Discipline over impulse.</h2><p>Set a session limit. Take a break. Never trade with money you cannot afford to lose.</p></article></section>;
   else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
-  else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} />)}</div><div className="payment-methods" role="list" aria-label="Payment methods"><article className="payment-option available" role="listitem"><span className="payment-symbol" aria-hidden="true">₮</span><span><b>USDT</b><small>TRON network · TRC20</small></span><strong>Available</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">▭</span><span><b>Card</b><small>Visa · Mastercard</small></span><strong>Coming soon</strong></article><article className="payment-option" role="listitem"><span className="payment-symbol" aria-hidden="true">M</span><span><b>M-Pesa</b><small>Mobile money</small></span><strong>Coming soon</strong></article></div>{settings.trc20Wallet && <div className="wallet-address"><span>USDT · TRC20 wallet</span><code>{settings.trc20Wallet}</code></div>}<p className="pricing-note">Access is granted after the TRC20 payment reference is reviewed. Never send cryptocurrency to an address that is not displayed by BrandyFx.</p></section>;
+  else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} onCheckout={() => setPurchasePlan(plan)} />)}</div><p className="pricing-note">Pay only to the TRC20 address shown in the BrandyFx payment window. Verify the network and amount before sending.</p></section>;
   else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
   else if (currentTab === 'refund') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">Refund<br/>policy.</h1><p>Last Updated: January 27, 2026</p></header>
     <div className="policy-guarantee"><b>♛</b><div><h2>Royal Guarantee</h2><p>We stand behind every purchase. If BrandyFx doesn't deliver, you get your money back — no runaround, no questions asked.</p></div><strong>48 HOURS<small>Back Guarantee</small></strong></div>
@@ -271,5 +340,6 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
       <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
       <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>
     </footer>
+    {purchasePlan && <PurchaseDialog plan={purchasePlan} settings={settings} onClose={() => setPurchasePlan(null)} />}
   </main>;
 }

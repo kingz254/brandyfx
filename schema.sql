@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS payments (
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'regular';
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_package_check;
 ALTER TABLE payments ADD CONSTRAINT payments_package_check CHECK(package IN ('regular','premium','riseFall','overUnder','matches'));
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_name text NOT NULL DEFAULT '';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_email text NOT NULL DEFAULT '';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_country text NOT NULL DEFAULT '';
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS rot_number text NOT NULL DEFAULT '';
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS payments_member ON payments(account_id, id DESC);
 CREATE UNIQUE INDEX IF NOT EXISTS payments_one_pending ON payments(account_id) WHERE status='pending';
 CREATE TABLE IF NOT EXISTS pass_audit (
