@@ -73,6 +73,8 @@ function SocialLinks({ settings, className = '' }: { settings: PublicSettings; c
 }
 
 const freeBots = [
+  { name: 'Even Contract Bot', category: 'Even', description: 'Places Even digit contracts on a five tick duration with a fixed USD 1 stake. Change the market, duration, currency and stake in Deriv Bot before running.', file: 'even-contract.xml', fxproFile: 'Even Contract Bot.xml' },
+  { name: 'Odd Contract Bot', category: 'Odd', description: 'Places Odd digit contracts on a five tick duration with a fixed USD 1 stake. Change the market, duration, currency and stake in Deriv Bot before running.', file: 'odd-contract.xml', fxproFile: 'Odd Contract Bot.xml' },
   { name: 'Alternate Even-Odd', category: 'Even / Odd', description: 'Alternates Even and Odd contracts. Review the entry conditions, stake and limits before running.', file: 'alternate-even-odd.xml', fxproFile: 'Alternate Even-Odd.xml' },
   { name: 'Turbo O/U', category: 'Over / Under', description: 'Over/Under strategy preset with configurable stake progression.', file: 'turbo-over-under.xml', fxproFile: 'Turbo O_U Accelerator.xml' },
   { name: 'Core Bot V3', category: 'Matches / Differs', description: 'Core strategy preset with a Matches/Differs contract. Inspect conditions and money management.', file: 'core-bot-v3.xml', fxproFile: 'Core Bot V3.xml' },
