@@ -117,6 +117,10 @@ const reviewCopy = [
   'The risk reminders make the product limits clear while I explore the desk.',
   'The page keeps Rise / Fall and digit setups easy to scan.',
   'I can check the market first and make my own decision about any trade.',
+  'The market and expiry details are easy to find when I review a setup.',
+  'It is useful to see the signal family beside the latest price.',
+  'The clear risk notes help me remember that every trade is my decision.',
+  'I can follow the tick context without losing sight of the signal history.',
 ];
 
 function sampleReview(round: number, index: number) {
@@ -128,24 +132,18 @@ function sampleReview(round: number, index: number) {
 
 function ReviewCarousel() {
   const [round, setRound] = useState(0);
-  const [paused, setPaused] = useState(false);
   useEffect(() => {
-    if (paused) return;
     const timer = window.setInterval(() => setRound(value => value + 1), 7200);
     return () => clearInterval(timer);
-  }, [paused]);
-  const reviews = Array.from({ length: 4 }, (_, index) => sampleReview(round, index));
+  }, []);
+  const reviews = Array.from({ length: 10 }, (_, index) => sampleReview(round, index));
   return <>
-    <div className="review-controls">
-      <p>Illustrative samples only. These names and statements are generated examples, not reviews from real customers.</p>
-      <div><button type="button" aria-label="Show next example set" onClick={() => setRound(value => value + 1)}>Next examples <span aria-hidden="true">↗</span></button>
-        <button type="button" aria-pressed={paused} onClick={() => setPaused(value => !value)}>{paused ? 'Resume rotation' : 'Pause rotation'}</button></div>
-    </div>
+    <p className="review-disclosure">Illustrative samples only. These names and statements are generated examples, not reviews from real customers.</p>
     <div className="review-wall" aria-live="off">
-      {reviews.map((review, index) => <article className={`review-card review-v${((round + index) % 7) + 1}`} key={`${round}-${review.countryCode}-${index}`}>
-        <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><span className="review-count">EXAMPLE {String(index + 1).padStart(2, '0')}</span></div>
+      {reviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.countryCode}-${index}`}>
+        <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span></div>
         <p className="review-copy">{review.text}</p>
-        <div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>{review.name}</b><small>{review.country} · fictional profile</small></span></div>
+        <div className="review-person"><span className="review-flag"><img src={`/flags/${review.countryCode}.svg`} alt={`Flag of ${review.country}`} /></span><span><b>{review.name}</b><small>{review.country}</small></span></div>
       </article>)}
     </div>
   </>;
