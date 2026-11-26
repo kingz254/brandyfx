@@ -281,6 +281,18 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
   </main>;
 }
 
+function AdminLogin({ pending, notice, run }: { pending: boolean; notice: string; run: (path: string, data?: object) => Promise<boolean> }) {
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  return <main className="admin-gate"><img src="/brand/brandyfx-app-icon.png" alt=""/><h1>Admin sign in</h1><p>Enter your BrandyFx administrator credentials.</p>
+    <form className="admin-login-form" onSubmit={async event => { event.preventDefault(); if (await run('admin/login', { name, password })) setPassword(''); }}>
+      <label>Admin name<input value={name} onChange={event => setName(event.target.value)} autoComplete="username" required/></label>
+      <label>Password<input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete="current-password" required/></label>
+      {notice && <p className="admin-message error" role="alert">{notice}</p>}
+      <button className="landing-primary" disabled={pending}>{pending ? 'Signing in…' : 'Sign in'}</button>
+    </form><a className="landing-secondary" href="/?home">Return to BrandyFx</a></main>;
+}
+
 const loginMessage: Record<string, string> = {
   setup: 'Deriv sign-in is awaiting setup.', invalid: 'This sign-in link expired. Please start again.',
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
@@ -357,7 +369,7 @@ function App() {
   if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} />;
   else if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
-  else if (adminRoute) page = <main className="admin-gate"><img src="/brand/brandyfx-app-icon.png" alt=""/><h1>Administrator sign in</h1><p>Sign in with the Deriv account configured for site administration.</p>{notice && <p role="alert">{notice}</p>}<a className="landing-primary" href="/api/deriv/start?return_to=%2Fkingz.html">Continue with Deriv ↗</a><a className="landing-secondary" href="/?home">Return to BrandyFx</a></main>;
+  else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
   else if (showingDesk) page = <Desk markets={markets} signals={preview ? fixtureSignals : signals} connected={preview || connected} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;

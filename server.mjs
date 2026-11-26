@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -15,6 +15,11 @@ const db = process.env.DATABASE_URL ? connect() : null;
 db?.on('error', error => console.error('Database connection interrupted', error.code));
 if (!dev && (!db || !process.env.DERIV_CLIENT_ID)) throw new Error('DATABASE_URL and DERIV_CLIENT_ID are required');
 const adminIds = new Set((process.env.ADMIN_DERIV_ACCOUNTS || '').split(',').map(id => id.trim()).filter(Boolean));
+const adminLoginName = process.env.KINGZ_ADMIN_NAME || '';
+const adminPasswordSalt = process.env.KINGZ_ADMIN_PASSWORD_SALT || '';
+const adminPasswordHash = process.env.KINGZ_ADMIN_PASSWORD_HASH || '';
+const adminSessionSecret = process.env.KINGZ_ADMIN_SESSION_SECRET || '';
+const loginFailures = new Map();
 const approved = process.env.APPROVED_RULE_VERSION === VERSION;
 const DEFAULT_SITE_SETTINGS = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: 0.5, glassOpacity: 0.72,
@@ -28,6 +33,32 @@ const hash = value => createHash('sha256').update(value).digest('base64url');
 const cookie = (name, value, age) => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${origin.protocol === 'https:' ? '; Secure' : ''}`;
 const readCookie = (req, name) => (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(name + '='))?.slice(name.length + 1);
 const key = (req, name) => hash(readCookie(req, name) || '');
+function hasAdminSession(req) {
+  if (!adminSessionSecret) return false;
+  const [expires, nonce, signature, extra] = (readCookie(req, 'bfx_admin') || '').split('.');
+  if (extra || !/^\d{10,13}$/.test(expires || '') || !/^[A-Za-z0-9_-]{20,}$/.test(nonce || '')) return false;
+  const expiry = Number(expires);
+  if (!Number.isSafeInteger(expiry) || expiry <= Date.now()) return false;
+  const expected = createHmac('sha256', adminSessionSecret).update(`${expires}.${nonce}`).digest('base64url');
+  const actualBuffer = Buffer.from(signature || '');
+  const expectedBuffer = Buffer.from(expected);
+  return actualBuffer.length === expectedBuffer.length && timingSafeEqual(actualBuffer, expectedBuffer);
+}
+function matchesAdminPassword(name, password) {
+  if (!adminLoginName || !adminPasswordSalt || !adminPasswordHash || !adminSessionSecret ||
+    typeof name !== 'string' || name.length > 80 || typeof password !== 'string' || password.length > 512 || name !== adminLoginName) return false;
+  try {
+    const actual = scryptSync(password, Buffer.from(adminPasswordSalt, 'base64url'), 32);
+    const expected = Buffer.from(adminPasswordHash, 'base64url');
+    return expected.length === actual.length && timingSafeEqual(actual, expected);
+  } catch { return false; }
+}
+function newAdminSession() {
+  const expires = String(Date.now() + 8 * 60 * 60 * 1000);
+  const nonce = random();
+  const signature = createHmac('sha256', adminSessionSecret).update(`${expires}.${nonce}`).digest('base64url');
+  return { value: `${expires}.${nonce}.${signature}`, seconds: 8 * 60 * 60 };
+}
 const json = (res, code, value) => res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(value));
 const redirect = (res, location, cookies = []) => res.writeHead(303, { Location: location, 'Set-Cookie': cookies }).end();
 const error = (status, message) => Object.assign(new Error(message), { status });
@@ -152,7 +183,30 @@ async function api(req, res, url) {
   if (method === 'POST' && req.headers.origin !== origin.origin) throw error(403, 'Invalid request origin.');
   if (method === 'GET' && path === '/api/markets') return json(res, 200, db ? await markets() : []);
   if (method === 'GET' && path === '/api/settings') return json(res, 200, await siteSettings());
-  if (method === 'GET' && path === '/api/me' && !db) return json(res, 200, { ready: false });
+  if (method === 'POST' && path === '/api/admin/login') {
+    if (!adminLoginName || !adminPasswordSalt || !adminPasswordHash || !adminSessionSecret) throw error(503, 'Administrator password sign-in is not configured.');
+    const client = req.socket.remoteAddress || 'unknown';
+    const failed = loginFailures.get(client);
+    if (failed?.blockedUntil > Date.now()) throw error(429, 'Too many attempts. Try again later.');
+    const { name, password } = await body(req);
+    if (!matchesAdminPassword(name, password)) {
+      const next = failed?.windowUntil > Date.now() ? failed : { count: 0, windowUntil: Date.now() + 15 * 60 * 1000 };
+      next.count += 1;
+      if (next.count >= 5) next.blockedUntil = Date.now() + 15 * 60 * 1000;
+      loginFailures.set(client, next);
+      throw error(401, 'Name or password is incorrect.');
+    }
+    loginFailures.delete(client);
+    const session = newAdminSession();
+    res.setHeader('Set-Cookie', cookie('bfx_admin', session.value, session.seconds));
+    return json(res, 200, { ok: true });
+  }
+  const passwordAdmin = hasAdminSession(req);
+  if (method === 'GET' && path === '/api/me' && !db) return json(res, 200, { ready: false, admin: passwordAdmin });
+  if (method === 'POST' && path === '/api/logout' && !db && passwordAdmin) {
+    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0), cookie('bfx_admin', '', 0)]);
+    return json(res, 200, {});
+  }
   if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
   if (!db) throw error(503, 'The service is awaiting setup.');
   if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url);
@@ -160,7 +214,7 @@ async function api(req, res, url) {
   if (method === 'GET' && path === '/api/stream') return live(res, id);
   const state = await memberState(id);
   const account = state?.account_id;
-  const admin = adminIds.has(account);
+  const admin = adminIds.has(account) || passwordAdmin;
   if (method === 'GET' && path === '/api/me') {
     const payment = account ? await one(`SELECT id,status,created,expires,revoked_at FROM payments
       WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
@@ -168,8 +222,8 @@ async function api(req, res, url) {
       accounts: account ? undefined : state?.accounts, passUntil: state?.pass_until, payment, offer: account ? await offer() : null });
   }
   if (method === 'POST' && path === '/api/logout') {
-    await db.query('DELETE FROM sessions WHERE id=$1', [id]);
-    res.setHeader('Set-Cookie', cookie('bfx_session', '', 0));
+    if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);
+    res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0), cookie('bfx_admin', '', 0)]);
     return json(res, 200, {});
   }
   if (method === 'POST' && path === '/api/account' && state && !account) {
@@ -182,8 +236,9 @@ async function api(req, res, url) {
     res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000))));
     return json(res, 200, {});
   }
-  if (!account) throw error(401, 'Sign in with Deriv.');
+  if (!account && !admin) throw error(401, 'Sign in with Deriv.');
   if (method === 'POST' && path === '/api/payment') {
+    if (!account) throw error(401, 'Sign in with Deriv.');
     if (!approved) throw error(409, 'Paid access is awaiting launch.');
     const { reference, package: tier = 'regular' } = await body(req);
     if (typeof reference !== 'string' || !/^[A-Za-z0-9-]{5,80}$/.test(reference.trim())) throw error(400, 'Enter a valid payment reference.');
