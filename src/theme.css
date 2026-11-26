@@ -765,6 +765,11 @@ body { color: var(--tone-fff); }
 .risk-footer p { width: min(100%, 110rem); margin: 0 auto; color: rgb(255 255 255 / .78); line-height: 1.75; text-align: left; }
 .risk-footer strong { color: #fff; }
 @keyframes review-arrive { from { opacity: .5; transform: translateY(8px) rotateX(-2deg); } to { opacity: 1; transform: translateY(0) rotateX(0); } }
+.top, .ribbon, .desk, .layout, .notice, .risk-footer, .login-page, .landing { position: relative; z-index: 2; }
+.landing h1, .landing h2, .landing h3, .landing h4, .landing p:not(.landing-kicker), .landing li, .landing dt, .landing dd, .landing small, .landing summary, .landing label, .landing .landing-tabs a { color: #fff; opacity: 1; }
+.landing .landing-kicker, .landing .family-index, .landing .section-heading > span, .landing .review-quote-mark, .landing .footer-link-group h2 { color: #51e7a3; opacity: 1; }
+.landing-hero h1, .landing-lede, .landing-feed h2, .landing-feed p, .landing-feed .feed-status { text-shadow: 0 2px 14px rgb(0 0 0 / .72); }
+.risk-footer p { color: #f5f8f6; }
 @media (max-width: 68rem) {
   .landing-footer { grid-template-columns: minmax(12rem, 1.2fr) repeat(3, minmax(7rem, .7fr)); gap: 1.7rem 1.2rem; }
   .landing-nav-actions { gap: .4rem; }
