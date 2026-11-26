@@ -22,6 +22,7 @@ const contractGuides = {
 const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
+const demo = route.has('demo');
 const home = route.has('home');
 const deskEntry = route.has('desk');
 const adminRoute = location.pathname === '/kingz.html';
@@ -64,11 +65,19 @@ async function api<T>(path: string, value?: object): Promise<T> {
 }
 
 function useMarkets() {
-  const [markets, setMarkets] = useState<Market[]>(preview ? fixtureMarkets : []);
+  const [markets, setMarkets] = useState<Market[]>(preview || demo ? fixtureMarkets : []);
   useEffect(() => {
     if (preview) return;
     let done = false;
     let timer: number;
+    if (demo) {
+      setMarkets(fixtureMarkets);
+      const simulation = window.setInterval(() => setMarkets(current => current.map(market => {
+        const next = Math.max(100, Number(market.quote) + (Math.random() - 0.5) * 3).toFixed(2);
+        return { ...market, quote: next, points: [...market.points.slice(-63), next], updated: until(0), live: true };
+      })), 1000);
+      return () => window.clearInterval(simulation);
+    }
     async function poll() {
       try {
         const data = await api<Market[]>('markets');
@@ -89,7 +98,7 @@ function Mark() {
   return <img className="mark" src="/brand/brandyfx-app-icon.png" alt="" />;
 }
 
-function Desk({ markets, signals, connected }: { markets: Market[]; signals: Signal[]; connected: boolean }) {
+function Desk({ markets, signals, connected, simulated = false }: { markets: Market[]; signals: Signal[]; connected: boolean; simulated?: boolean }) {
   const [family, setFamily] = useState<keyof typeof contractGuides>('evenOdd');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
@@ -110,7 +119,7 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
   return <main className="desk desk-table-page">
     <section className="desk-main">
       <div className="desk-heading"><div><p className="landing-kicker">DERIV · LIVE SIGNAL FEED</p><h1>Signals desk</h1><p>Live setups across the volatility markets.</p></div>
-        <span className={feedLive ? 'status live' : 'status'}>{preview ? 'Sample feed' : feedLive ? 'Feed live' : 'Waiting for live feed'}</span></div>
+        <span className={simulated ? 'status' : feedLive ? 'status live' : 'status'}>{simulated ? 'SIMULATION · not live' : preview ? 'Sample feed' : feedLive ? 'Feed live' : 'Waiting for live feed'}</span></div>
       <div className="tabs" role="group" aria-label="Signal family">{families.map(([id, label]) => <button key={id} type="button"
         aria-pressed={family === id} onClick={() => setFamily(id)}>{label}</button>)}</div>
       <section className="contract-guide" aria-label={activeFamily + ' contract guide'}>
@@ -141,7 +150,7 @@ function Desk({ markets, signals, connected }: { markets: Market[]; signals: Sig
         </table>
         {!orderedMarkets.length && <p className="desk-wait" role="status">Waiting for Deriv market data.</p>}
       </div>
-      <p className="signal-disclaimer">Signals are generated from recent ticks for your own review.</p>
+      <p className="signal-disclaimer">{simulated ? 'Simulated prices and randomly generated signals for interface testing only.' : 'Signals are generated from recent ticks for your own review.'}</p>
     </section>
   </main>;
 }
@@ -322,11 +331,29 @@ function App() {
   const [loaded, setLoaded] = useState(preview || home);
   const [tab, setTab] = useState('desk');
   const [signals, setSignals] = useState<Signal[]>([]);
+  const [simulatedSignals, setSimulatedSignals] = useState<Signal[]>([]);
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
   const canView = Boolean(member.admin || (member.account && member.launched && member.passUntil));
+  useEffect(() => {
+    if (!demo) return;
+    setSignals([]);
+    setConnected(true);
+    const interval = window.setInterval(() => {
+      const market = fixtureMarkets[Math.floor(Math.random() * fixtureMarkets.length)];
+      const family = families[Math.floor(Math.random() * families.length)][0];
+      const label = family === 'evenOdd' ? (Math.random() < .5 ? 'Even' : 'Odd') : family === 'range' ? (Math.random() < .5 ? 'Over 6' : 'Under 3') : 'Matches';
+      const signal: Signal = {
+        id: Math.floor(Date.now() + Math.random() * 1000), symbol: market.symbol, family, label,
+        digit: family === 'digit' ? Math.floor(Math.random() * 10) : family === 'range' ? (label === 'Over 6' ? 6 : 3) : null,
+        issued: new Date().toISOString(), expires: until(50000),
+      };
+      setSimulatedSignals(current => [...current.filter(item => +new Date(item.expires) > Date.now()), signal]);
+    }, 55000);
+    return () => window.clearInterval(interval);
+  }, []);
   async function refresh() {
     try {
       setMember(await api<Member>('me'));
@@ -353,7 +380,7 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (preview || home || adminRoute || !canView || tab !== 'desk') return;
+    if (preview || demo || home || adminRoute || !canView || tab !== 'desk') return;
     let active = true;
     let timer: number;
     async function poll() {
@@ -385,14 +412,14 @@ function App() {
       setPending(false);
     }
   }
-  const showingDesk = preview || (canView && tab === 'desk');
+  const showingDesk = preview || demo || (canView && tab === 'desk');
   let page: ReactNode;
   if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} />;
   else if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
-  else if (showingDesk) page = <Desk markets={markets} signals={preview ? fixtureSignals : signals} connected={preview || connected} />;
+  else if (showingDesk) page = <Desk markets={markets} signals={demo ? simulatedSignals : preview ? fixtureSignals : signals} connected={preview || demo || connected} simulated={demo} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
   else if (member.account) page = <Access member={member} />;
   else if (member.accounts?.length) page = <main className="layout access"><div><h1>Choose an account</h1>
@@ -418,10 +445,10 @@ function App() {
   return <><div className="site-backdrop" aria-hidden="true">
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
-  {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
+  {!settingsReady && !preview && !demo && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
   {home ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
-      {preview && <a className="quiet" href="/">Exit preview</a>}
+      {(preview || demo) && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Payments</button>
         <a className="quiet" href="/kingz.html">Site settings</a></>}
@@ -429,7 +456,7 @@ function App() {
     </nav>
   </header> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
-    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
+    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{demo ? 'SIMULATION · no live Deriv data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setTokenDialog(false); }}>
