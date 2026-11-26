@@ -1,7 +1,31 @@
 <xml xmlns="http://www.w3.org/1999/xhtml" collection="false">
+  <variables>
+    <variable id="bfx_base_stake">Initial stake</variable>
+    <variable id="bfx_multiplier">Martingale multiplier</variable>
+    <variable id="bfx_current_stake">Current stake</variable>
+  </variables>
   <block type="trade" id="73vWdDagX-YhN)CtN.3D" x="0" y="0">
     <statement name="SUBMARKET">
-      <block type="variables_set" id="6v!@?*xZA~*U{SuB=T[N">
+      <block type="variables_set" id="bfx_set_base">
+        <field name="VAR" id="bfx_base_stake">Initial stake</field>
+        <value name="VALUE"><block type="text_prompt_ext" id="bfx_prompt_base">
+          <mutation type="NUMBER"></mutation><field name="TYPE">NUMBER</field>
+          <value name="TEXT"><shadow type="text" id="bfx_shadow_base"><field name="TEXT">1</field></shadow>
+            <block type="text" id="bfx_label_base"><field name="TEXT">Initial stake (USD)</field></block>
+          </value>
+        </block></value>
+        <next><block type="variables_set" id="bfx_set_multiplier">
+          <field name="VAR" id="bfx_multiplier">Martingale multiplier</field>
+          <value name="VALUE"><block type="text_prompt_ext" id="bfx_prompt_multiplier">
+            <mutation type="NUMBER"></mutation><field name="TYPE">NUMBER</field>
+            <value name="TEXT"><shadow type="text" id="bfx_shadow_multiplier"><field name="TEXT">2</field></shadow>
+              <block type="text" id="bfx_label_multiplier"><field name="TEXT">Stake multiplier after a loss</field></block>
+            </value>
+          </block></value>
+          <next><block type="variables_set" id="bfx_set_current_initial">
+            <field name="VAR" id="bfx_current_stake">Current stake</field>
+            <value name="VALUE"><block type="variables_get" id="bfx_get_base_initial"><field name="VAR" id="bfx_base_stake">Initial stake</field></block></value>
+            <next><block type="variables_set" id="6v!@?*xZA~*U{SuB=T[N">
         <field name="VAR">Contract Type</field>
         <value name="VALUE">
           <block type="text" id="4^!Tx5_|Of5,0r})/9^d">
@@ -27,13 +51,19 @@
               </block>
             </value>
             <value name="AMOUNT">
-              <block type="math_number" id="|tIC~6lHx]cKt9rf1jFk">
-                <field name="NUM">1</field>
+              <block type="variables_get" id="bfx_amount_get">
+                <field name="VAR" id="bfx_current_stake">Current stake</field>
               </block>
             </value>
           </block>
         </next>
       </block>
+          </next>
+        </block>
+        </next>
+      </block>
+      </next>
+    </block>
     </statement>
   </block>
   <block type="before_purchase" id="tOc)]Xd=cAm0aiy+-8(8" x="0" y="268">
@@ -70,7 +100,26 @@
   </block>
   <block type="after_purchase" id="Vt,CkLeK8E?%BmnB`~M)" x="0" y="446">
     <statement name="AFTERPURCHASE_STACK">
-      <block type="controls_if" id="1-c,VlN:,{n1.F271)z.">
+      <block type="controls_if" id="bfx_update_stake">
+        <mutation else="1"></mutation>
+        <value name="IF0"><block type="contract_check_result" id="bfx_check_win"><field name="CHECK_RESULT">win</field></block></value>
+        <statement name="DO0"><block type="variables_set" id="bfx_reset_stake">
+          <field name="VAR" id="bfx_current_stake">Current stake</field>
+          <value name="VALUE"><block type="variables_get" id="bfx_get_base_reset"><field name="VAR" id="bfx_base_stake">Initial stake</field></block></value>
+        </block></statement>
+        <statement name="ELSE"><block type="variables_set" id="bfx_raise_stake">
+          <field name="VAR" id="bfx_current_stake">Current stake</field>
+          <value name="VALUE"><block type="math_arithmetic" id="bfx_multiply_stake">
+            <field name="OP">MULTIPLY</field>
+            <value name="A"><shadow type="math_number" id="bfx_shadow_current"><field name="NUM">1</field></shadow>
+              <block type="variables_get" id="bfx_get_current"><field name="VAR" id="bfx_current_stake">Current stake</field></block>
+            </value>
+            <value name="B"><shadow type="math_number" id="bfx_shadow_multiplier_value"><field name="NUM">2</field></shadow>
+              <block type="variables_get" id="bfx_get_multiplier"><field name="VAR" id="bfx_multiplier">Martingale multiplier</field></block>
+            </value>
+          </block></value>
+        </block></statement>
+        <next><block type="controls_if" id="1-c,VlN:,{n1.F271)z.">
         <mutation else="1"></mutation>
         <value name="IF0">
           <block type="logic_compare" id="gxiH0*@=TH*=X8}I4~99">
@@ -109,6 +158,8 @@
         </statement>
         <next>
           <block type="trade_again" id="SO*X=~i(5H%=zQ5%e+J$"></block>
+        </next>
+        </block>
         </next>
       </block>
     </statement>
