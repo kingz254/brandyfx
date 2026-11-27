@@ -14,6 +14,28 @@ type Order = Payment & { account_id: string; reference: string; amount: string; 
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string | null; lifetimeAccess?: boolean; allowedFamilies?: string[]; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
+function PublicLegal({ kind }: { kind: 'terms' | 'privacy' }) {
+  return <main className="tab-page legal-page public-legal"><header className="tab-heading"><p className="landing-kicker">BrandyFx · Legal</p>
+    <h1>{kind === 'terms' ? <>Terms of<br/>service.</> : <>Privacy<br/>policy.</>}</h1>
+    <p>Last updated 28 November 2026</p></header>
+    {kind === 'terms' ? <div className="legal-grid">
+      <article className="legal-placeholder"><h2>Using BrandyFx</h2><p>BrandyFx provides digit signal information, educational material, and downloadable XML bots for supported packages. You must be legally eligible to use Deriv and its products in your location. Keep your sign-in details secure and provide accurate checkout information.</p></article>
+      <article className="legal-placeholder"><h2>Signals and trading risk</h2><p>Signals and bots are informational tools, not financial advice or a promise of accuracy or profit. Derivatives trading involves substantial risk and you can lose all or part of the amount you trade. You remain responsible for your trading decisions. Check each contract's terms and payout on Deriv before trading.</p></article>
+      <article className="legal-placeholder"><h2>Packages and payments</h2><p>Prices and included signal families appear on the Pricing page. A package is a one-time payment for lifetime access to the stated BrandyFx service, beginning after payment review and approval. Refund eligibility is described in the Refund Policy. Send TRC20 payments only over the TRON network to the address and amount shown at checkout.</p></article>
+      <article className="legal-placeholder"><h2>Accounts and bots</h2><p>Access is linked to the Deriv real account ID used to sign in and is subject to package permissions. Never share your Deriv password, verification code, or API token with BrandyFx. You are responsible for configuring and supervising downloaded bots. A bot may place trades according to its settings and losses are possible.</p></article>
+      <article className="legal-placeholder"><h2>Availability and other services</h2><p>We may update or temporarily limit the site. Do not disrupt the service, bypass access controls, or use BrandyFx unlawfully. Deriv is an independent service with its own terms and risk disclosures. BrandyFx is not operated by Deriv.</p></article>
+      <article className="legal-placeholder"><h2>Contact and changes</h2><p>We may update these terms by publishing a revised version here. Contact BrandyFx through the channels on the Contact page with questions.</p></article>
+    </div> : <div className="legal-grid">
+      <article className="legal-placeholder"><h2>Information we receive</h2><p>Deriv sign-in provides BrandyFx your Deriv account identifier and account information returned for Options access. Payment submissions include the name, email, country, Deriv account ID, transaction reference, package, and submission time you provide. Basic technical information such as session identifiers and request metadata is used to operate and protect the service.</p></article>
+      <article className="legal-placeholder"><h2>How we use it</h2><p>We use information to authenticate sessions, associate payment submissions with accounts, review and manage access, provide package features, respond to support requests, and protect the service. BrandyFx does not ask for your Deriv password.</p></article>
+      <article className="legal-placeholder"><h2>Storage and sharing</h2><p>Account identifiers, payment details, access records, and session data are stored by BrandyFx service providers, including hosting and database providers. We do not sell personal information. Providers receive information only as needed to operate the service. Deriv handles information submitted to its services under its own privacy notices.</p></article>
+      <article className="legal-placeholder"><h2>Retention and your choices</h2><p>We retain payment and access records while needed to administer purchases, resolve disputes, and meet legal duties. Contact BrandyFx to request access, correction, or deletion where applicable. Some records may need to be retained.</p></article>
+      <article className="legal-placeholder"><h2>Security and children</h2><p>We use access controls and protected connections to safeguard information. No internet service can guarantee absolute security. BrandyFx is intended for adults legally eligible to access Deriv in their location.</p></article>
+      <article className="legal-placeholder"><h2>Contact and changes</h2><p>Use the current channels shown on the BrandyFx Contact page for privacy questions. We may update this policy when our service or legal duties change.</p></article>
+    </div>}
+    <footer className="legal-public-footer"><a href="/">Back to sign in</a><span>© BrandyFx</span></footer>
+  </main>;
+}
 const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches']] as const;
 const contractGuides = {
   evenOdd: { columns: ['Even', 'Odd'], rules: 'Even wins on 0, 2, 4, 6 or 8. Odd wins on 1, 3, 5, 7 or 9. A final quote of 1254.78 ends in 8, so it wins an Even contract.' },
@@ -421,6 +443,7 @@ function App() {
     }
   }
   const privateHome = Boolean(member.account && !route.has('desk') && !adminRoute);
+  const publicLegal = !member.account && route.has('legal');
   const showingDesk = preview || (canView && route.has('desk'));
   let page: ReactNode;
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
@@ -429,6 +452,7 @@ function App() {
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
+  else if (publicLegal) page = <PublicLegal kind={route.get('legal') === 'privacy' ? 'privacy' : 'terms'} />;
   else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
   else if (member.admin && tab === 'admin') page = <Admin run={run} />;
@@ -445,7 +469,7 @@ function App() {
       {!member.ready && <p className="login-setup-note" role="status">Deriv sign-in is awaiting server configuration.</p>}
       <div className="login-divider"><span>or</span></div>
       <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
-      <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
+      <p className="login-terms">By continuing, you agree to the <a href="/?legal=terms">Terms</a> &amp; <a href="/?legal=privacy">Privacy Policy</a>.</p>
     </section>
     {import.meta.env.DEV && <a className="preview-link login-preview" href="/?preview">Open desk preview</a>}
   </main>;
@@ -453,7 +477,7 @@ function App() {
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
   {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
-  {privateHome ? page : <>{showingDesk || member.account || member.admin ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
+  {publicLegal ? <>{page}</> : privateHome ? page : <>{showingDesk || member.account || member.admin ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
@@ -464,7 +488,7 @@ function App() {
   </header> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
     {showingDesk || member.account || member.admin ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
-      <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
+      <footer className="risk-footer"><nav aria-label="Legal"><a href="/?legal=terms">Terms</a><a href="/?legal=privacy">Privacy Policy</a></nav><p><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget && !pending) { setTokenDialog(false); setTokenValue(''); } }}>
       <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
