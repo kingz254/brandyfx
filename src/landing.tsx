@@ -283,6 +283,8 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
       <li>Live Deriv volatility market context</li>
       <li>{plan.highlight} and signal history</li>
       {packageBots[plan.key].map(bot => <li key={bot.href}>Included bot: <code>{bot.name}</code></li>)}
+      <li>Use the bot alongside your BrandyFx signal desk; check the latest signal before each trade.</li>
+      <li>Signal access is restricted by your Deriv account, package and device. Downloaded XML bots are portable files and do not auto-sync or carry a per-client license lock; keep them for personal use and do not redistribute them.</li>
       <li>Risk reminders and your own trade decisions</li>
       <li>One-time purchase · lifetime access</li>
       {plan.vip && <><li>Private V.I.P. WhatsApp channel</li><li>Priority WhatsApp contact with faster responses</li><li>Educational tips on earning workflows with third-party Deriv apps and partnership information; no earnings are guaranteed</li></>}
@@ -299,8 +301,9 @@ type ClientProfile = { name: string; email: string; country: string; rot_number:
 function VerifiedPurchase({ receipt, settings, packageKey }: { receipt: ReceiptDetails; settings: PublicSettings; packageKey: string }) {
   const bots = packageBots[packageKey] || [];
   return <section className="purchase-confirmation verified-purchase"><p className="purchase-step">02 · VERIFY</p><h3>Payment verified. Your package is ready.</h3>
-    <p>Thank you for trusting BrandyFx. Your one-time purchase gives lifetime access to <strong>{receipt.package}</strong>. Download the matching Deriv Bot XML files below and use them alongside signals from your package.</p>
+    <p>Thank you for trusting BrandyFx. Your one-time purchase gives lifetime access to <strong>{receipt.package}</strong>. Download the matching Deriv Bot XML files below and use them alongside signals from your package. Check the signal desk before each trade; the XML bot does not automatically synchronize with BrandyFx.</p>
     <ul className="verified-bot-list">{bots.map(bot => <li key={bot.href}><span>{bot.name}</span><a className="landing-secondary" href={bot.href} download>Download XML</a></li>)}</ul>
+    <p className="bot-access-note">Signal access is restricted by your Deriv account, package and device. These downloaded XML files are portable and do not have a per-client license lock, so keep them for your own use and do not redistribute them.</p>
     <div className="verified-receipt-actions"><button className="landing-secondary" type="button" onClick={() => downloadReceipt(receipt)}>Download receipt</button>
       {settings.socialEmail ? <a className="landing-primary" href={receiptMailto(settings.socialEmail, receipt)}>Email BrandyFx to verify ↗</a> : <p className="purchase-error">BrandyFx has not added a support email in site settings yet.</p>}</div>
     <small>The email button opens your email app with the payment details addressed to BrandyFx. Your receipt includes your package, amount, transaction hash, purchase date and Deriv ROT.</small>

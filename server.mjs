@@ -187,7 +187,6 @@ async function oauth(req, res, url, requestBase) {
     const accounts = await listDerivAccounts(access_token, clientId);
     if (!accounts.length) return redirect(res, '/?login=account', clear);
     const device = deviceIdentity(req, requestBase.protocol === 'https:');
-    if (accounts.length === 1 && await isDeviceLockedToAnother(accounts[0], hash(device.value))) return redirect(res, '/?login=device', clear);
     const id = random();
     const seconds = Math.min(Math.floor(expires_in), 86400);
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
@@ -196,7 +195,7 @@ async function oauth(req, res, url, requestBase) {
     return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, ...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
-    const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : cause.status === 409 ? 'device' : 'failed';
+    const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : 'failed';
     return redirect(res, `/?login=${loginStatus}`, clear);
   }
 }
@@ -282,7 +281,6 @@ async function api(req, res, url) {
     const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID, true);
     if (!accounts.length) throw error(403, 'No active real ROT account was found for this token.');
     const device = deviceIdentity(req, requestBase.protocol === 'https:');
-    if (accounts.length === 1 && await isDeviceLockedToAnother(accounts[0], hash(device.value))) throw error(409, DEVICE_LOCK_MESSAGE);
     const id = random();
     const seconds = 12 * 60 * 60;
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
@@ -298,16 +296,16 @@ async function api(req, res, url) {
   const device = state ? deviceIdentity(req, requestBase.protocol === 'https:') : null;
   const currentDeviceHash = device ? hash(device.value) : null;
   if (device?.setCookie) addCookies(res, [device.setCookie]);
-  if (account && !admin) {
-    if (state.device_hash && state.device_hash !== currentDeviceHash) throw error(403, DEVICE_LOCK_MESSAGE);
-    const locked = await one('SELECT device_hash FROM device_locks WHERE account_id=$1', [account]);
-    if (locked || state.packages?.length) {
-      if (!await bindAccountDevice(account, currentDeviceHash)) throw error(403, DEVICE_LOCK_MESSAGE);
-    }
-    if (!state.device_hash) await db.query('UPDATE sessions SET device_hash=$2 WHERE id=$1 AND device_hash IS NULL', [id, currentDeviceHash]);
-  }
   if (method === 'GET' && path === '/api/signals') {
     if (!admin && !(approved && account && state.packages?.length)) throw error(403, 'An active pass is required.');
+    if (!admin && account) {
+      if (state.device_hash && state.device_hash !== currentDeviceHash) throw error(409, DEVICE_LOCK_MESSAGE);
+      const locked = await one('SELECT device_hash FROM device_locks WHERE account_id=$1', [account]);
+      if (locked || state.packages?.length) {
+        if (!await bindAccountDevice(account, currentDeviceHash)) throw error(409, DEVICE_LOCK_MESSAGE);
+      }
+      if (!state.device_hash) await db.query('UPDATE sessions SET device_hash=$2 WHERE id=$1 AND device_hash IS NULL', [id, currentDeviceHash]);
+    }
     const requestedFamily = url.searchParams.get('family');
     if (requestedFamily && !['evenOdd','range','digit'].includes(requestedFamily)) throw error(400, 'Choose a valid signal family.');
     if (!admin && requestedFamily) {
@@ -347,8 +345,6 @@ async function api(req, res, url) {
   if (method === 'POST' && path === '/api/account/select') {
     const { accountId } = await body(req);
     if (typeof accountId !== 'string' || !state.accounts?.includes(accountId) || !accountId.startsWith('ROT')) throw error(400, 'Choose a linked Deriv real account.');
-    if (await isDeviceLockedToAnother(accountId, currentDeviceHash)) throw error(409, DEVICE_LOCK_MESSAGE);
-    if (!await bindAccountDevice(accountId, currentDeviceHash)) throw error(409, DEVICE_LOCK_MESSAGE);
     await db.query('UPDATE sessions SET account_id=$2 WHERE id=$1', [id, accountId]);
     return json(res, 200, { ok: true });
   }
@@ -382,10 +378,6 @@ async function api(req, res, url) {
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending' AND deleted_at IS NULL)
       ON CONFLICT DO NOTHING RETURNING id`, [rot, reference.trim().toUpperCase(), tier, name.trim(), email.trim().toLowerCase(), country.trim()])).rows[0];
       if (!result) throw error(409, 'This hash is already recorded or a payment is pending for this Deriv account.');
-      const locked = await client.query(`INSERT INTO device_locks(account_id,device_hash) VALUES($1,$2)
-        ON CONFLICT(account_id) DO UPDATE SET last_seen=now() WHERE device_locks.device_hash=EXCLUDED.device_hash
-        RETURNING account_id`, [rot, currentDeviceHash]);
-      if (!locked.rows[0]) throw error(409, DEVICE_LOCK_MESSAGE);
       await client.query('COMMIT');
       return json(res, 201, result);
     } catch (cause) {

@@ -325,7 +325,6 @@ const loginMessage: Record<string, string> = {
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
   scope: 'Your Deriv token needs the trade permission to access Options accounts.',
   account: 'Sign in with a Deriv real account whose ROT number is available.',
-  device: 'This Deriv account is locked to another device. Sign in on your registered device or contact BrandyFx to reset it.',
 };
 
 function App() {
@@ -426,15 +425,26 @@ function App() {
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (DEVELOPMENT_SIGNAL_SIMULATION || preview || adminRoute || !canView || tab !== 'desk') return;
+    if (preview || adminRoute || !canView || tab !== 'desk') return;
     let active = true;
     let timer: number;
     async function poll() {
       try {
         const data = await api<Signal[]>('signals');
-        if (active) { setSignals(data); setConnected(true); }
-      } catch {
-        if (active) { setSignals([]); setConnected(false); }
+        if (active) {
+          if (DEVELOPMENT_SIGNAL_SIMULATION) { setConnected(true); active = false; }
+          else { setSignals(data); setConnected(true); }
+        }
+      } catch (cause) {
+        if (active) {
+          setSignals([]); setConnected(false);
+          const message = (cause as Error).message;
+          if (message.toLowerCase().includes('locked to another device')) {
+            setNotice(message);
+            active = false;
+            return;
+          }
+        }
       } finally {
         if (active) timer = window.setTimeout(poll, 1500);
       }
@@ -488,16 +498,16 @@ function App() {
   else if (publicLegal) page = <PublicLegal kind={route.get('legal') === 'privacy' ? 'privacy' : 'terms'} />;
   else if (!adminRoute && member.accounts && member.accounts.length > 1 && !member.account) page = <main className="account-choice-page"><header><p className="landing-kicker">Deriv account</p><h1>Choose your real account</h1><p>Select the ROT account you want to use with BrandyFx. Demo accounts are not supported.</p></header><section className="account-choice-list" aria-label="Available real accounts">{member.accounts.filter(account => account.startsWith('ROT')).map(account => <button type="button" key={account} onClick={() => void run('account/select', { accountId: account })} disabled={pending}>{account}<span aria-hidden="true">→</span></button>)}</section></main>;
   else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
-  else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
-  else if (member.admin && tab === 'admin') page = <Admin run={run} />;
-  else if (deviceConflict) page = <main className="login-page"><a className="login-brand" href="/" aria-label="BrandyFx home"><img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" /></a>
-    <section className="login-card device-conflict-card"><p className="landing-kicker">DEVICE ACCESS</p><h1>Device lock conflict</h1>
-      <p>This Deriv account is registered to another device. Contact BrandyFx if you want to change the device you use. You do not need to pay again.</p>
+  else if (showingDesk && deviceConflict) page = <main className="login-page"><a className="login-brand" href="/?home" aria-label="BrandyFx home"><img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" /></a>
+    <section className="login-card device-conflict-card"><p className="landing-kicker">SIGNAL ACCESS</p><h1>Device lock conflict</h1>
+      <p>This Deriv account’s signal access is registered to another device. Contact BrandyFx if you need to transfer access. You do not need to pay again.</p>
       {settings.socialWhatsApp && <a className="primary deriv-login" href={settings.socialWhatsApp} target="_blank" rel="noreferrer">Contact BrandyFx on WhatsApp</a>}
       {settings.socialEmail && <a className="token-login device-contact-link" href={`mailto:${settings.socialEmail}?subject=${encodeURIComponent('Request to change BrandyFx device access')}`}>Email BrandyFx</a>}
       {!settings.socialWhatsApp && !settings.socialEmail && <p>Use the BrandyFx contact details shared with you to request a device change.</p>}
-      <a className="login-terms" href="/?legal=terms">Back to sign in</a>
+      <a className="login-terms" href="/?home">Back to home</a>
     </section></main>;
+  else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
+  else if (member.admin && tab === 'admin') page = <Admin run={run} />;
   else if (member.account) page = <Access member={member} />;
   else page = <main className="login-page">
     <a className="login-brand" href="/" aria-label="BrandyFx home">
@@ -528,7 +538,7 @@ function App() {
       {(member.admin || member.account) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
   </header> : null}
-    {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
+    {notice && !deviceConflict && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
     {showingDesk || member.account || member.admin ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><nav aria-label="Legal"><a href="/?legal=terms">Terms</a><a href="/?legal=privacy">Privacy Policy</a></nav><details className="risk-disclaimer"><summary>Trading risk disclaimer</summary><p><strong>Disclaimer:</strong> {derivDisclaimer}</p></details></footer>}
     </>}
