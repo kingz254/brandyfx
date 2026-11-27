@@ -11,7 +11,7 @@ type Profile = { name: string; email: string; country: string; rot_number: strin
 type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string; package?: string; reference?: string; amount?: string; currency?: string };
 type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string };
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
-type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
+type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches']] as const;
 const contractGuides = {
@@ -319,7 +319,7 @@ const loginMessage: Record<string, string> = {
   setup: 'Deriv sign-in is awaiting setup.', invalid: 'This sign-in link expired. Please start again.',
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
   scope: 'Your Deriv token needs the trade permission to access Options accounts.',
-  account: 'No active Deriv Options account was found.',
+  account: 'Sign in with a Deriv real account whose ROT number is available.',
 };
 
 function App() {
@@ -442,10 +442,6 @@ function App() {
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
   else if (member.account) page = <Access member={member} />;
-  else if (member.accounts?.length) page = <main className="layout access"><div><h1>Choose an account</h1>
-    <p>Use the same Deriv account each time to keep your pass.</p></div><section className="access-panel account-list">
-      {member.accounts.map(account => <button className="quiet" key={account} disabled={pending} onClick={() => void run('account', { account })}>{account}</button>)}
-    </section></main>;
   else page = <main className="login-page">
     <a className="login-brand" href="/" aria-label="BrandyFx home">
       <img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" />
@@ -465,17 +461,17 @@ function App() {
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
   {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
-  {privateHome ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
+  {privateHome ? page : <>{showingDesk || member.account ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Payments</button>
         <a className="quiet" href="/kingz.html">Site settings</a></>}
-      {(member.admin || member.account || member.accounts?.length) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
+      {(member.admin || member.account) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
   </header> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
-    {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
+    {showingDesk || member.account ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget && !pending) { setTokenDialog(false); setTokenValue(''); } }}>
@@ -485,7 +481,7 @@ function App() {
         <p>Verify the Deriv Options accounts connected to your token.</p>
         <form onSubmit={submitToken}>
           <label>Deriv API token<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={4096} required value={tokenValue} onChange={event => setTokenValue(event.target.value)} /></label>
-          <p className="token-note">Use a token with the trade permission. It is sent securely for verification and is not saved by BrandyFx.</p>
+          <p className="token-note">Use a token with the trade permission and an active real ROT account. The token is sent securely for verification and is not saved by BrandyFx.</p>
           {notice && <p className="token-note" role="alert">{notice}</p>}
           <button className="primary" type="submit" disabled={pending || !tokenValue.trim()}>{pending ? 'Verifying with Deriv…' : 'Verify and sign in'}</button>
         </form>

@@ -90,7 +90,11 @@ async function siteSettings() {
 }
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
-const memberState = id => one(`SELECT s.account_id,s.accounts,s.expires,
+const memberState = id => one(`SELECT COALESCE(
+  CASE WHEN s.account_id LIKE 'ROT%' THEN s.account_id END,
+  (SELECT stored.account_id FROM unnest(s.accounts) AS stored(account_id)
+    WHERE stored.account_id LIKE 'ROT%' ORDER BY stored.account_id LIMIT 1)
+  ) AS account_id,s.expires,
   (SELECT max(expires) FROM payments WHERE account_id=s.account_id AND status='approved'
     AND revoked_at IS NULL AND expires>now()) AS pass_until
   FROM sessions s WHERE s.id=$1 AND s.expires>now()`, [id]);
@@ -157,7 +161,7 @@ async function oauth(req, res, url, requestBase) {
     const seconds = Math.min(Math.floor(expires_in), 86400);
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
-    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
+    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds]);
     return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
@@ -185,7 +189,8 @@ async function listDerivAccounts(token, clientId, personalAccessToken = false) {
   catch { throw error(503, 'Deriv returned an unreadable account response. Please try again.'); }
   const data = payload && typeof payload === 'object' ? payload.data : null;
   return [...new Set((Array.isArray(data) ? data : [])
-    .filter(item => item?.status === 'active' && typeof item.account_id === 'string' && item.account_id.length <= 80)
+    .filter(item => item?.status === 'active' && item.account_type === 'real' &&
+      typeof item.account_id === 'string' && item.account_id.startsWith('ROT') && item.account_id.length <= 80)
     .map(item => item.account_id))];
 }
 
@@ -244,12 +249,12 @@ async function api(req, res, url) {
     const token = typeof input.token === 'string' ? input.token.trim() : '';
     if (!token || token.length > 4096 || /[\u0000-\u001f\u007f]/.test(token)) throw error(400, 'Enter a valid Deriv API token.');
     const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID, true);
-    if (!accounts.length) throw error(403, 'No active Deriv Options account was found for this token.');
+    if (!accounts.length) throw error(403, 'No active real ROT account was found for this token.');
     const id = random();
     const seconds = 12 * 60 * 60;
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
-    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
+    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds]);
     res.setHeader('Set-Cookie', cookie('bfx_session', id, seconds, requestBase.protocol === 'https:'));
     return json(res, 200, { ok: true });
   }
@@ -276,21 +281,11 @@ async function api(req, res, url) {
     const profile = account ? await one(`SELECT customer_name AS name,customer_email AS email,customer_country AS country,rot_number
       FROM payments WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
     return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, admin,
-      accounts: account ? undefined : state?.accounts, passUntil: state?.pass_until, payment, profile, offer: account ? await offer() : null });
+      passUntil: state?.pass_until, payment, profile, offer: account ? await offer() : null });
   }
   if (method === 'POST' && path === '/api/logout') {
     if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);
     res.setHeader('Set-Cookie', [cookie('bfx_session', '', 0, requestBase.protocol === 'https:'), cookie('bfx_admin', '', 0, requestBase.protocol === 'https:')]);
-    return json(res, 200, {});
-  }
-  if (method === 'POST' && path === '/api/account' && state && !account) {
-    const input = await body(req);
-    if (!state.accounts.includes(input.account)) throw error(400, 'Choose a verified Deriv account.');
-    const next = random();
-    const selected = await one(`UPDATE sessions SET id=$2,account_id=$3 WHERE id=$1 AND expires>now()
-      AND account_id IS NULL RETURNING expires`, [id, hash(next), input.account]);
-    if (!selected) throw error(409, 'Sign in again to select an account.');
-    res.setHeader('Set-Cookie', cookie('bfx_session', next, Math.max(0, Math.floor((+selected.expires - Date.now()) / 1000)), requestBase.protocol === 'https:'));
     return json(res, 200, {});
   }
   if (method === 'POST' && path === '/api/payment') {
