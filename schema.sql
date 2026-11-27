@@ -5,9 +5,19 @@ CREATE TABLE IF NOT EXISTS oauth_attempts (
 ALTER TABLE oauth_attempts ADD COLUMN IF NOT EXISTS return_to text NOT NULL DEFAULT '/';
 ALTER TABLE oauth_attempts ENABLE ROW LEVEL SECURITY;
 CREATE TABLE IF NOT EXISTS sessions (
-  id text PRIMARY KEY, account_id text, accounts text[] NOT NULL, expires timestamptz NOT NULL
+  id text PRIMARY KEY, account_id text, accounts text[] NOT NULL, expires timestamptz NOT NULL,
+  device_hash text
 );
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_hash text;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS device_locks (
+  account_id text PRIMARY KEY,
+  device_hash text NOT NULL,
+  created timestamptz NOT NULL DEFAULT now(),
+  last_seen timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE device_locks ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE device_locks FROM anon, authenticated;
 CREATE TABLE IF NOT EXISTS offer (
   id boolean PRIMARY KEY DEFAULT true CHECK (id),
   amount numeric(12,2) NOT NULL CHECK (amount > 0),

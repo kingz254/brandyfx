@@ -10,7 +10,7 @@ type Signal = { id: number; symbol: string; family: string; label: string; digit
 type Offer = { amount: string; currency: string; days: number; instructions: string };
 type Profile = { name: string; email: string; country: string; rot_number: string };
 type Payment = { id: string; status: string; created: string; expires?: string | null; revoked_at?: string; deleted_at?: string | null; package?: string; reference?: string; amount?: string; currency?: string; customer_name?: string; customer_email?: string; customer_country?: string; rot_number?: string };
-type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string };
+type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string; device_locked: boolean };
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
 type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string | null; lifetimeAccess?: boolean; allowedFamilies?: string[]; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
@@ -20,6 +20,11 @@ const contractGuides = {
   range: { columns: ['Over 6', 'Under 3'], rules: 'Over 6 wins on 7, 8 or 9. Under 3 wins on 0, 1 or 2. The comparisons are strict. A final digit of 6 loses an Over 6 contract, and a 3 loses an Under 3 contract.' },
   digit: { columns: ['Matches'], rules: 'A Matches prediction can be any digit from 0 through 9. If Volatility 50 shows Digit 4, a contract predicting 4 wins only if the final tick ends in 4. Every other digit loses.' },
 };
+const signalBots = {
+  evenOdd: { name: 'bfx-manipulation-evenodd.xml', href: '/bots/bfx-manipulation-evenodd.xml' },
+  range: { name: 'bfx-manipulation-overunder.xml', href: '/bots/bfx-manipulation-overunder.xml' },
+  digit: { name: 'bfx-manipulation-matches.xml', href: '/bots/bfx-manipulation-matches.xml' },
+} as const;
 const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
 const preview = import.meta.env.DEV && route.has('preview');
@@ -130,20 +135,24 @@ function Desk({ markets, signals, connected, simulated = false, allowedFamilies,
         <p><strong>Payout.</strong> Deriv quotes the total return before purchase for the market, duration and stake you select. Net profit on a win is the quoted payout minus the stake. A losing contract normally forfeits the stake.</p>
         <p>Each BrandyFx signal is visible for up to 50 seconds. You choose the contract duration separately in Deriv.</p>
       </section>
+      <section className="signal-bot-download" aria-label={`${activeFamily} bot download`}>
+        <div><p className="landing-kicker">BOT FOR THIS SIGNAL TAB</p><h2>{signalBots[family].name}</h2><p>Keep the matching XML bot available whenever you use this signal desk.</p></div>
+        <a className="signal-bot-download-link" href={signalBots[family].href} download>Download XML <span aria-hidden="true">↓</span></a>
+      </section>
       <div className="signal-table-shell" role="region" aria-label={`${activeFamily} signals`} tabIndex={0}>
         <table className="signal-table"><caption>{activeFamily} signals by market</caption>
           <thead><tr><th scope="col">Market</th>{columns.map(column => <th scope="col" key={column}>{column}</th>)}<th scope="col">Live last digits</th></tr></thead>
           {orderedMarkets.map(market => {
             const signal = connected && market.live ? latest.get(market.symbol) : undefined;
             const seconds = signal ? Math.ceil((+new Date(signal.expires) - clock) / 1000) : 0;
-            return <tbody key={market.symbol}><tr>
+            return <tbody key={market.symbol}><tr className="signal-market-row" data-family={family}>
               <th scope="row">{market.name}</th>
               {columns.map(column => {
                 const matches = signal?.label === column;
                 const label = matches && signal?.family === 'digit' ? `Digit ${signal.digit}` : column;
-                return <td key={column}><span className={`signal-result${matches ? ' signal-result-live' : ''}`} aria-label={matches ? `${label} signal` : 'No current signal'}>{matches ? label : '----'}</span></td>;
+                return <td key={column} data-label={column}><span className={`signal-result${matches ? ' signal-result-live' : ''}`} aria-label={matches ? `${label} signal` : 'No current signal'}>{matches ? label : '----'}</span></td>;
               })}
-              <td className="signal-price">{market.quote ? <strong className="signal-quote">{market.quote.slice(0, -1)}<span>{market.quote.slice(-1)}</span></strong> : '–'}
+              <td className="signal-price" data-label="Live last digits">{market.quote ? <strong className="signal-quote">{market.quote.slice(0, -1)}<span>{market.quote.slice(-1)}</span></strong> : '–'}
                 <small>{market.live && market.updated ? stamp(market.updated) : market.quote ? 'Stale quote' : 'Waiting for ticks'}</small></td>
             </tr>{seconds > 0 && <tr className="signal-timer-row"><td colSpan={columns.length + 2}>
               Signal expires in <time dateTime={`PT${seconds}S`}>{seconds}s</time>
@@ -237,15 +246,16 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
   const visibleOrders = selectedPackage === 'all' ? orders : orders.filter(order => order.package === selectedPackage);
   const receipt = (order: Order): ReceiptDetails => ({ id: String(order.id), name: order.customer_name, email: order.customer_email, country: order.customer_country, rot: order.rot_number || order.account_id, package: planNames[order.package] || order.package, amount: order.amount, currency: order.currency, reference: order.reference, created: order.created });
   return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client records</p><h2>Clients</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
-    <p className="admin-panel-note">Verify each TRC20 transaction hash before approving. Approval grants that package for the lifetime of the BrandyFx service. Matches V.I.P. includes all three signal tabs.</p>
+    <p className="admin-panel-note">Verify each TRC20 transaction hash before approving. Approval grants that package for the lifetime of the BrandyFx service. Matches V.I.P. includes all three signal tabs. Device reset signs the account out and lets its next sign-in bind a new device.</p>
     <div className="client-package-filters" role="group" aria-label="Filter clients by package">{filters.map(([key,label]) => <button key={key} type="button" aria-pressed={selectedPackage === key} onClick={() => setSelectedPackage(key)}>{label}<small>{key === 'all' ? orders.length : orders.filter(order => order.package === key).length}</small></button>)}</div>
     {loadError && <p className="admin-message error" role="alert">{loadError}</p>}
     {!loadError && !orders.length && <p>No payment records yet.</p>}
     {!!visibleOrders.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Deriv / ROT</th><th>Package</th><th>Paid</th><th>Transaction hash</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>{visibleOrders.map(order => <tr key={order.id}><td><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
-        <td>{order.rot_number || order.account_id}</td><td>{planNames[order.package] || order.package}<small>One-time · lifetime</small></td><td>{order.currency} {Number(order.amount).toFixed(2)}</td>
-        <td><code>{order.reference}</code></td><td><span className={`record-status record-${order.deleted_at ? 'deleted' : order.revoked_at ? 'revoked' : order.status}`}>{order.deleted_at ? 'Deleted' : order.revoked_at ? 'Revoked' : order.status}</span></td>
-        <td><div className="record-actions">{order.status === 'pending' && !order.deleted_at && <><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve · lifetime</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></>}
+      <tbody>{visibleOrders.map(order => <tr key={order.id}><td data-label="Client"><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
+        <td data-label="Deriv / ROT">{order.rot_number || order.account_id}<small>{order.device_locked ? 'Device locked' : 'No device lock'}</small></td><td data-label="Package">{planNames[order.package] || order.package}<small>One-time · lifetime</small></td><td data-label="Paid">{order.currency} {Number(order.amount).toFixed(2)}</td>
+        <td data-label="Transaction hash"><code>{order.reference}</code></td><td data-label="Status"><span className={`record-status record-${order.deleted_at ? 'deleted' : order.revoked_at ? 'revoked' : order.status}`}>{order.deleted_at ? 'Deleted' : order.revoked_at ? 'Revoked' : order.status}</span></td>
+        <td data-label="Actions"><div className="record-actions">{order.status === 'pending' && !order.deleted_at && <><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve · lifetime</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></>}
+          {order.device_locked && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Reset ${order.rot_number || order.account_id}'s device lock? This signs out their current sessions.`) && await run('admin/device-lock', { accountId: order.account_id })) void load(); }}>Reset device lock</button>}
           {order.status === 'approved' && !order.revoked_at && !order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'revoke' })) void load(); }}>Revoke access</button>}
           {order.status === 'approved' && <><button type="button" className="landing-secondary" onClick={() => downloadReceipt(receipt(order))}>Download receipt</button>{order.customer_email && <a className="landing-secondary" href={receiptMailto(order.customer_email, receipt(order))}>Email receipt</a>}</>}
           {!order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Remove ${order.customer_name || order.account_id}'s record and revoke access?`)) { if (await run('admin/payment', { paymentId: order.id, action: 'delete' })) void load(); } }}>Delete record</button>}
@@ -271,7 +281,7 @@ function ManagementRequests() {
     {message && <p className="admin-message error" role="alert">{message}</p>}
     {!message && !requests.length && <p>No account-management enquiries yet.</p>}
     {!!requests.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Starting amount</th><th>Preferred date</th><th>Received</th><th>Status</th></tr></thead><tbody>
-      {requests.map(request => <tr key={request.id}><td>{request.name}</td><td>USD {Number(request.amount).toFixed(2)}</td><td>{request.start_date}</td><td>{dateLabel(request.created)}</td><td><span className={`record-status record-${request.status}`}>{request.status}</span></td></tr>)}
+      {requests.map(request => <tr key={request.id}><td data-label="Client">{request.name}</td><td data-label="Starting amount">USD {Number(request.amount).toFixed(2)}</td><td data-label="Preferred date">{request.start_date}</td><td data-label="Received">{dateLabel(request.created)}</td><td data-label="Status"><span className={`record-status record-${request.status}`}>{request.status}</span></td></tr>)}
     </tbody></table></div>}
   </section>;
 }
@@ -293,6 +303,7 @@ const loginMessage: Record<string, string> = {
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
   scope: 'Your Deriv token needs the trade permission to access Options accounts.',
   account: 'Sign in with a Deriv real account whose ROT number is available.',
+  device: 'This Deriv account is locked to another device. Sign in on your registered device or contact BrandyFx to reset it.',
 };
 
 function App() {
@@ -312,7 +323,7 @@ function App() {
   const allowedFamilies = member.allowedFamilies || [];
   const canView = Boolean(member.account && (member.admin || (member.launched && allowedFamilies.length > 0)));
   useEffect(() => {
-    if (!DEVELOPMENT_SIGNAL_SIMULATION || adminRoute || !canView || tab !== 'desk') return;
+    if (!DEVELOPMENT_SIGNAL_SIMULATION || !canView || tab !== 'desk') return;
     setSignals([]);
     setConnected(true);
     let timer: number;
@@ -341,8 +352,12 @@ function App() {
   async function refresh() {
     try {
       setMember(await api<Member>('me'));
-    } catch {
-      setNotice('The service is temporarily unavailable.');
+    } catch (cause) {
+      const message = (cause as Error).message;
+      setNotice(message);
+      if (message.includes('locked to another device')) {
+        setMember({}); setSignals([]); setSimulatedSignals([]); setConnected(false);
+      }
     } finally {
       setLoaded(true);
     }
@@ -410,6 +425,7 @@ function App() {
   let page: ReactNode;
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin && tab === 'admin') page = <Admin run={run}/>;
+  else if (adminRoute && member.admin && tab === 'desk') page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin />;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
@@ -424,6 +440,7 @@ function App() {
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
+      <p className="login-device-note">One device per Deriv account. Submitting a payment binds signal access to this browser on this device. Contact BrandyFx if you need to transfer it.</p>
       <a className="primary deriv-login" href="/api/deriv/start">Log in with Deriv</a>
       {!member.ready && <p className="login-setup-note" role="status">Deriv sign-in is awaiting server configuration.</p>}
       <div className="login-divider"><span>or</span></div>

@@ -33,6 +33,8 @@ const DEFAULT_SITE_SETTINGS = {
 const random = () => randomBytes(32).toString('base64url');
 const hash = value => createHash('sha256').update(value).digest('base64url');
 const cookie = (name, value, age, secure = origin.protocol === 'https:') => `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${age}${secure ? '; Secure' : ''}`;
+const DEVICE_LOCK_MESSAGE = 'This Deriv account is locked to another device. Sign in on your registered device or contact BrandyFx to reset it.';
+const DEVICE_COOKIE_SECONDS = 315360000;
 function requestOrigin(req) {
   const first = value => String(value || '').split(',')[0].trim();
   const protocol = first(req.headers['x-forwarded-proto']) || origin.protocol.slice(0, -1);
@@ -41,6 +43,28 @@ function requestOrigin(req) {
 }
 const readCookie = (req, name) => (req.headers.cookie || '').split(';').map(part => part.trim()).find(part => part.startsWith(name + '='))?.slice(name.length + 1);
 const key = (req, name) => hash(readCookie(req, name) || '');
+function deviceIdentity(req, secure = origin.protocol === 'https:') {
+  const value = readCookie(req, 'bfx_device') || '';
+  return /^[A-Za-z0-9_-]{32,64}$/.test(value) ? { value, setCookie: null } : (() => {
+    const next = random();
+    return { value: next, setCookie: cookie('bfx_device', next, DEVICE_COOKIE_SECONDS, secure) };
+  })();
+}
+function addCookies(res, values) {
+  if (!values.length) return;
+  const current = res.getHeader('Set-Cookie');
+  res.setHeader('Set-Cookie', [...(Array.isArray(current) ? current : current ? [current] : []), ...values]);
+}
+async function isDeviceLockedToAnother(accountId, deviceHash) {
+  const lock = await one('SELECT device_hash FROM device_locks WHERE account_id=$1', [accountId]);
+  return Boolean(lock && lock.device_hash !== deviceHash);
+}
+async function bindAccountDevice(accountId, deviceHash) {
+  const bound = await one(`INSERT INTO device_locks(account_id,device_hash) VALUES($1,$2)
+    ON CONFLICT(account_id) DO UPDATE SET last_seen=CASE WHEN device_locks.last_seen<now()-interval '15 minutes' THEN now() ELSE device_locks.last_seen END
+    WHERE device_locks.device_hash=EXCLUDED.device_hash RETURNING account_id`, [accountId, deviceHash]);
+  return Boolean(bound);
+}
 function hasAdminSession(req) {
   if (!adminSessionSecret) return false;
   const [expires, nonce, signature, extra] = (readCookie(req, 'bfx_admin') || '').split('.');
@@ -90,7 +114,7 @@ async function siteSettings() {
 }
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
-const memberState = id => one(`SELECT real_account.account_id,s.expires,
+const memberState = id => one(`SELECT real_account.account_id,s.expires,s.device_hash,
   coalesce(array_agg(DISTINCT p.package) FILTER (WHERE p.id IS NOT NULL), ARRAY[]::text[]) AS packages,
   coalesce(bool_or(p.expires IS NULL), false) AS lifetime_access,
   max(p.expires) FILTER (WHERE p.expires>now()) AS pass_until
@@ -138,6 +162,7 @@ async function oauth(req, res, url, requestBase) {
   const redirectUri = new URL('/callback', origin).href;
   if (url.pathname.endsWith('/start')) {
     if (requestBase.origin !== origin.origin) return redirect(res, new URL('/api/deriv/start', origin).href);
+    const device = deviceIdentity(req, requestBase.protocol === 'https:');
     const id = random();
     const state = random();
     const verifier = random();
@@ -147,7 +172,7 @@ async function oauth(req, res, url, requestBase) {
     const auth = new URL('https://auth.deriv.com/oauth2/auth');
     auth.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri,
       response_type: 'code', scope: 'trade', state, code_challenge: hash(verifier), code_challenge_method: 'S256' });
-    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300, requestBase.protocol === 'https:')]);
+    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300, requestBase.protocol === 'https:'), ...(device.setCookie ? [device.setCookie] : [])]);
   }
   const clear = [cookie('bfx_oauth', '', 0, requestBase.protocol === 'https:')];
   const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier,return_to', [key(req, 'bfx_oauth')]);
@@ -162,15 +187,17 @@ async function oauth(req, res, url, requestBase) {
     if (typeof access_token !== 'string' || !Number.isFinite(expires_in) || expires_in < 1) return redirect(res, '/?login=failed', clear);
     const accounts = await listDerivAccounts(access_token, clientId);
     if (!accounts.length) return redirect(res, '/?login=account', clear);
+    const device = deviceIdentity(req, requestBase.protocol === 'https:');
+    if (await isDeviceLockedToAnother(accounts[0], hash(device.value))) return redirect(res, '/?login=device', clear);
     const id = random();
     const seconds = Math.min(Math.floor(expires_in), 86400);
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
-      INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
-    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds]);
-    return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
+      INSERT INTO sessions(id,account_id,accounts,expires,device_hash) VALUES($2,$3,$4,now()+$5*interval '1 second',$6)`,
+    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds, hash(device.value)]);
+    return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, ...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
-    const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : 'failed';
+    const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : cause.status === 409 ? 'device' : 'failed';
     return redirect(res, `/?login=${loginStatus}`, clear);
   }
 }
@@ -255,18 +282,31 @@ async function api(req, res, url) {
     if (!token || token.length > 4096 || /[\u0000-\u001f\u007f]/.test(token)) throw error(400, 'Enter a valid Deriv API token.');
     const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID, true);
     if (!accounts.length) throw error(403, 'No active real ROT account was found for this token.');
+    const device = deviceIdentity(req, requestBase.protocol === 'https:');
+    if (await isDeviceLockedToAnother(accounts[0], hash(device.value))) throw error(409, DEVICE_LOCK_MESSAGE);
     const id = random();
     const seconds = 12 * 60 * 60;
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
-      INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
-    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds]);
-    res.setHeader('Set-Cookie', cookie('bfx_session', id, seconds, requestBase.protocol === 'https:'));
+      INSERT INTO sessions(id,account_id,accounts,expires,device_hash) VALUES($2,$3,$4,now()+$5*interval '1 second',$6)`,
+    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds, hash(device.value)]);
+    addCookies(res, [...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
     return json(res, 200, { ok: true });
   }
   const id = key(req, 'bfx_session');
   const state = await memberState(id);
   const account = state?.account_id;
   const admin = adminIds.has(account) || passwordAdmin;
+  const device = account ? deviceIdentity(req, requestBase.protocol === 'https:') : null;
+  const currentDeviceHash = device ? hash(device.value) : null;
+  if (device?.setCookie) addCookies(res, [device.setCookie]);
+  if (account && !admin) {
+    if (state.device_hash && state.device_hash !== currentDeviceHash) throw error(403, DEVICE_LOCK_MESSAGE);
+    const locked = await one('SELECT device_hash FROM device_locks WHERE account_id=$1', [account]);
+    if (locked || state.packages?.length) {
+      if (!await bindAccountDevice(account, currentDeviceHash)) throw error(403, DEVICE_LOCK_MESSAGE);
+    }
+    if (!state.device_hash) await db.query('UPDATE sessions SET device_hash=$2 WHERE id=$1 AND device_hash IS NULL', [id, currentDeviceHash]);
+  }
   if (method === 'GET' && path === '/api/signals') {
     if (!admin && !(approved && account && state.packages?.length)) throw error(403, 'An active pass is required.');
     const requestedFamily = url.searchParams.get('family');
@@ -321,7 +361,10 @@ async function api(req, res, url) {
       typeof country !== 'string' || !country.trim() || country.trim().length > 90 || typeof rotNumber !== 'string' || !/^[A-Za-z0-9-]{3,40}$/.test(rotNumber.trim())) throw error(400, 'Enter your name, a valid email, country and Deriv ROT number.');
     const rot = rotNumber.trim().toUpperCase();
     if (rot !== account) throw error(400, 'Use the Deriv account number that is signed in.');
-    const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const result = (await client.query(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
           THEN CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
           ELSE CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
@@ -329,9 +372,20 @@ async function api(req, res, url) {
       INSERT INTO payments(account_id,reference,amount,currency,days,package,customer_name,customer_email,customer_country,rot_number)
       SELECT $1,$2,amount,'USDT',days,$3,$4,$5,$6,$1 FROM plan WHERE NOT EXISTS(
         SELECT 1 FROM payments WHERE account_id=$1 AND status='pending' AND deleted_at IS NULL)
-      ON CONFLICT DO NOTHING RETURNING id`, [rot, reference.trim().toUpperCase(), tier, name.trim(), email.trim().toLowerCase(), country.trim()]);
-    if (!result) throw error(409, 'This hash is already recorded or a payment is pending for this Deriv account.');
-    return json(res, 201, result);
+      ON CONFLICT DO NOTHING RETURNING id`, [rot, reference.trim().toUpperCase(), tier, name.trim(), email.trim().toLowerCase(), country.trim()])).rows[0];
+      if (!result) throw error(409, 'This hash is already recorded or a payment is pending for this Deriv account.');
+      const locked = await client.query(`INSERT INTO device_locks(account_id,device_hash) VALUES($1,$2)
+        ON CONFLICT(account_id) DO UPDATE SET last_seen=now() WHERE device_locks.device_hash=EXCLUDED.device_hash
+        RETURNING account_id`, [rot, currentDeviceHash]);
+      if (!locked.rows[0]) throw error(409, DEVICE_LOCK_MESSAGE);
+      await client.query('COMMIT');
+      return json(res, 201, result);
+    } catch (cause) {
+      await client.query('ROLLBACK');
+      throw cause;
+    } finally {
+      client.release();
+    }
   }
   if (method === 'POST' && path === '/api/account-management') {
     const { name, amount, startDate } = await body(req);
@@ -351,8 +405,27 @@ async function api(req, res, url) {
   if (!admin) throw error(403, 'Administrator access required.');
   if (method === 'GET' && path === '/api/admin/payments') {
     return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,deleted_at,
-      customer_name,customer_email,customer_country,rot_number
+      customer_name,customer_email,customer_country,rot_number,
+      EXISTS(SELECT 1 FROM device_locks d WHERE d.account_id=payments.account_id) AS device_locked
       FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 300`));
+  }
+  if (method === 'POST' && path === '/api/admin/device-lock') {
+    const { accountId } = await body(req);
+    if (typeof accountId !== 'string' || !/^ROT[A-Za-z0-9-]{3,40}$/i.test(accountId.trim())) throw error(400, 'Choose a valid Deriv ROT account.');
+    const rot = accountId.trim().toUpperCase();
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      const removed = await client.query('DELETE FROM device_locks WHERE account_id=$1 RETURNING account_id', [rot]);
+      await client.query('DELETE FROM sessions WHERE account_id=$1 OR accounts @> ARRAY[$1]::text[]', [rot]);
+      await client.query('COMMIT');
+      return json(res, 200, { ok: true, reset: Boolean(removed.rowCount) });
+    } catch (cause) {
+      await client.query('ROLLBACK');
+      throw cause;
+    } finally {
+      client.release();
+    }
   }
   if (method === 'GET' && path === '/api/admin/account-management') {
     return json(res, 200, await rows(`SELECT id,name,amount,start_date,status,created
