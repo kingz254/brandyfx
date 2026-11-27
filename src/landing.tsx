@@ -33,7 +33,7 @@ export type PublicSettings = {
 };
 
 const tabs = [
-  ['home', 'Home'], ['free-bots', 'Free Bots'], ['process', 'How it works'],
+  ['home', 'Home'], ['free-bots', 'Free Bots'], ['process', 'Digit guide'],
   ['account-management', 'Account management'], ['reviews', 'Read reviews'], ['pricing', 'Pricing'], ['refund', 'Refund policy'], ['faq', 'FAQ'],
 ] as const;
 
@@ -95,9 +95,15 @@ const planCards = [
 ] as const;
 
 const steps = [
-  ['01', 'Read the live feed', 'Follow Deriv tick data and keep the current price context close to each signal.'],
-  ['02', 'Review the setup', 'Choose a signal family, check the market and expiry, then review recent signal history.'],
-  ['03', 'Make your own trade', 'Signals are information for your decision. Choose your own stake and manage your own risk.'],
+  ['01', 'Read the final digit', 'Each Deriv tick ends with a digit from 0 to 9. The selected signal family describes how to interpret that digit.'],
+  ['02', 'Check the contract details', 'Review the market, signal family, expiry and the payout shown by Deriv for the contract you choose. Payouts vary by market conditions and contract terms.'],
+  ['03', 'Choose what to do', 'A signal is information for your review, not an instruction or an automatic trade. You choose whether to trade, your stake and how to manage risk.'],
+];
+
+const digitFamilies = [
+  { index: '01 · PARITY', title: 'Even / Odd', description: 'Read whether the final digit is even (0, 2, 4, 6, 8) or odd (1, 3, 5, 7, 9). The signal names the side to review.' },
+  { index: '02 · THRESHOLDS', title: 'Over 6 / Under 3', description: 'Over 6 refers to final digits 7, 8 or 9. Under 3 refers to 0, 1 or 2. Digits 3 through 6 fall outside those outcomes.' },
+  { index: '03 · EXACT DIGIT', title: 'Matches', description: 'A Matches setup names a prediction digit from 0 to 9. The contract wins only if the final digit matches that prediction at expiry.' },
 ];
 
 const faqs = [
@@ -353,7 +359,7 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
   </div>;
 }
 
-export default function Landing({ markets, tab, settings }: { markets: MarketSample[]; tab: string; settings: PublicSettings }) {
+export default function Landing({ markets, tab, settings, simulated = false }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean }) {
   const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
   const shownMarkets = markets.slice(0, 5);
   const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
@@ -361,20 +367,29 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
   const live = shownMarkets.some(market => market.live);
   let content;
 
-  if (currentTab === 'home') content = <section className="landing-hero" aria-labelledby="landing-title">
+  if (currentTab === 'home') content = <>
+  <section className="landing-hero" aria-labelledby="landing-title">
     <div className="landing-hero-copy">
-
-      <h1 id="landing-title">Read the move.<br />Trade with intent.</h1>
-      <p className="landing-lede">BrandyFx turns live Deriv ticks into clear signal setups for Even / Odd, Over 6 / Under 3, and Matches.</p>
+      <p className="landing-kicker">DERIV DIGIT SIGNALS</p>
+      <h1 id="landing-title">Read the last digit.<br />Choose with context.</h1>
+      <p className="landing-lede">BrandyFx is a digit-focused signals workspace for Deriv volatility markets. It organizes tick digits into Even / Odd, Over 6 / Under 3, and Matches setups, with the market and recent signal context close at hand.</p>
       <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/?desk">See the signal desk</a></div>
-      <dl className="landing-facts"><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Market source</dt><dd>Deriv ticks</dd></div><div><dt>Execution</dt><dd>In your hands</dd></div></dl>
+      <dl className="landing-facts"><div><dt>What we read</dt><dd>Digits 0–9</dd></div><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Execution</dt><dd>Your decision</dd></div></dl>
     </div>
-    <section className="landing-feed" aria-label="Live Deriv market prices">
-      <div className="landing-feed-head"><div><h2>Live tick feed</h2></div><span className={live ? 'feed-status is-live' : 'feed-status'}><i aria-hidden="true" />{live ? 'Connected' : 'Waiting for feed'}</span></div>
+    <section className="landing-feed" aria-label="Deriv market prices">
+      <div className="landing-feed-head"><div><h2>{simulated ? 'Market preview' : 'Live tick feed'}</h2></div><span className={live && !simulated ? 'feed-status is-live' : 'feed-status'}><i aria-hidden="true" />{simulated ? 'Development simulation' : live ? 'Connected' : 'Waiting for feed'}</span></div>
       {shownMarkets.length ? <div className="landing-quotes">{shownMarkets.map(market => <div className="landing-quote" key={market.symbol}><span><strong>{market.name.replace('Volatility ', 'Vol ').replace(' Index', '')}</strong><small>{market.symbol}</small></span><b>{market.quote || '–'}</b></div>)}</div> : <p className="feed-empty">Current Deriv prices will appear here when the market feed is available.</p>}
-      <p className="feed-foot">Prices are informational. They are not a promise of a signal or trading result.</p>
+      <p className="feed-foot">{simulated ? 'Development preview: these sample prices are simulated, not live Deriv quotes.' : 'Prices are informational. They are not a promise of a signal or trading result.'}</p>
     </section>
-  </section>;
+  </section>
+    <section className="landing-section home-digit-section" aria-labelledby="digit-overview-title">
+      <div className="landing-section-heading"><div><p className="landing-kicker">A DIGIT-FIRST APPROACH</p><h2 id="digit-overview-title">One last digit.<br/>Three ways to read it.</h2></div><p>Each setup is tied to a Deriv volatility market. The signal desk groups the idea by contract type so you can understand what a signal refers to before making your own trading decision.</p></div>
+      <div className="family-grid">{digitFamilies.map(family => <article className="family-panel" key={family.index}><span className="family-index">{family.index}</span><h3>{family.title}</h3><p>{family.description}</p></article>)}</div>
+      <aside className="intelligence-note"><div><p className="landing-kicker">READ THE SIGNAL, THEN DECIDE</p><h3>BrandyFx presents setups. You stay in control.</h3></div><p>Signals do not place trades or guarantee a result. Check the Deriv contract details and payout, choose your own stake, and only trade money you can afford to lose.</p></aside>
+      {simulated && <p className="development-note" role="note"><strong>Development mode:</strong> the current market quotes and generated signal examples are simulated to demonstrate how the desk works. They are not live Deriv data.</p>}
+      <div className="home-guide-action"><a className="landing-secondary" href={tabHref('process')}>Explore the digit guide <span aria-hidden="true">↗</span></a></div>
+    </section>
+  </>;
   else if (currentTab === 'free-bots') content = <section className="tab-page free-bots-page" aria-labelledby="page-title">
     <header className="tab-heading"><h1 id="page-title">Free bots.<br />Built to inspect.</h1><p>Download ten XML strategy examples from the Pipforge collection and review every block before you run one.</p></header>
     <a className="pipforge-sponsor" href="https://www.fxprotrades.site" target="_blank" rel="noreferrer"><span className="sponsor-mark" aria-hidden="true">FX</span><span><small>BOT LIBRARY PARTNER</small><strong>Proudly sponsored by FXPro</strong></span><span className="sponsor-link">Visit FXProTrades ↗</span></a>
@@ -385,7 +400,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     </article>)}</div>
     <p className="bot-risk-note">These XML files can automate trades. Inspect the contract, stake progression and loss limits in Deriv Bot, and test with a demo account before considering live use. Automation does not remove trading risk.</p>
   </section>;
-  else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">From live ticks<br />to a considered trade.</h1><p>Keep context in view, then make your own decision.</p></header><div className="process-list">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div></section>;
+  else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">HOW DIGIT SIGNALS WORK</p><h1 id="page-title">Every setup starts<br/>with the last digit.</h1><p>Deriv volatility index prices update tick by tick. BrandyFx groups signal ideas around the final digit in a quote and shows which market and contract family a setup refers to.</p></header><div className="family-grid digit-guide-grid">{digitFamilies.map(family => <article className="family-panel" key={family.index}><span className="family-index">{family.index}</span><h2>{family.title}</h2><p>{family.description}</p></article>)}</div><div className="process-list digit-guide-steps">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div>{simulated && <p className="development-note" role="note"><strong>Development mode:</strong> the current market quotes and generated signal examples are simulated to demonstrate the workflow. They are not live Deriv data.</p>}<p className="digit-guide-risk">Digit contracts can lose money. The payout, probability and contract terms depend on the Deriv market and contract selected. A signal is not a promise of profit.</p></section>;
   else if (currentTab === 'account-management') content = <AccountManagement whatsapp={settings.socialWhatsApp}/>;
   else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
   else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} onCheckout={() => setPurchasePlan(plan)} />)}</div><p className="pricing-note">Pay only to the TRC20 address shown in the BrandyFx payment window. Verify the network and amount before sending.</p></section>;
@@ -411,7 +426,7 @@ export default function Landing({ markets, tab, settings }: { markets: MarketSam
     {content}
     <footer className="landing-footer">
       <section className="footer-brand-block"><a className="landing-brand" href={tabHref('home')}><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></a><p>Deriv signal intelligence for informed decisions.</p><SocialLinks settings={settings} className="site-social-links-footer"/></section>
-      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('free-bots')}>Free Bots</a><a href={tabHref('process')}>How it works</a><a href={tabHref('pricing')}>Pricing</a><a href="/">Access terminal</a></nav>
+      <nav className="footer-link-group" aria-label="Platform"><h2>Platform</h2><a href={tabHref('free-bots')}>Free Bots</a><a href={tabHref('process')}>Digit guide</a><a href={tabHref('pricing')}>Pricing</a><a href="/">Access terminal</a></nav>
       <nav className="footer-link-group" aria-label="Community"><h2>Community</h2><a href={tabHref('reviews')}>Read reviews</a>{socialMeta.filter(({ key }) => key !== 'socialEmail' && socialHref(settings, key)).map(({ key, label }) => <a key={key} href={socialHref(settings, key)} target="_blank" rel="noreferrer">{label}</a>)}<a href={tabHref('contact')}>Contact</a></nav>
       <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
       <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>

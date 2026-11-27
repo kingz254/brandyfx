@@ -518,6 +518,17 @@ a.deriv-login { display: flex; align-items: center; justify-content: center; tex
 .family-index { display: inline-flex; color: var(--emerald-bright); font: 500 .85rem var(--numbers); }
 .family-panel h3 { margin-top: 2.5rem; font-size: clamp(1.2rem, 1.8vw, 1.65rem); }
 .family-panel p, .process-step p, .challenge-copy > p:not(.landing-kicker), .challenge-card p, .intelligence-note > p { margin-top: .55rem; color: var(--night-muted); font-size: .9rem; }
+.home-digit-section { padding-top: 1rem; }
+.home-digit-section .family-panel { min-height: 14rem; }
+.home-digit-section .intelligence-note { margin-top: 1rem; }
+.development-note { margin-top: 1rem; padding: 1rem 1.2rem; border: 1px solid var(--login-line); border-radius: 1rem; color: var(--night-text); background: var(--login-glass-mid); font-size: .85rem; line-height: 1.65; }
+.development-note strong { color: var(--emerald-bright); }
+.home-guide-action { display: flex; justify-content: flex-end; margin-top: 1rem; }
+.digit-guide-grid { margin-bottom: 1.5rem; }
+.digit-guide-grid .family-panel { min-height: 13rem; }
+.digit-guide-grid .family-panel h2 { margin-top: 2.5rem; }
+.digit-guide-steps { margin-top: 1.5rem; }
+.digit-guide-risk { max-width: 76ch; margin-top: 1rem; color: var(--night-text); font-size: .85rem; line-height: 1.65; }
 .intelligence-note { display: flex; justify-content: space-between; align-items: center; gap: 2rem; margin-top: .85rem; padding: 1.5rem 1.8rem; }
 .intelligence-note h3 { margin-top: .3rem; font-size: 1.35rem; }
 .intelligence-note > p { max-width: 48ch; margin-top: 0; }

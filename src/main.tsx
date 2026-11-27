@@ -424,7 +424,7 @@ function App() {
   }
   const showingDesk = preview || (canView && tab === 'desk');
   let page: ReactNode;
-  if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} />;
+  if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
   else if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
