@@ -125,7 +125,8 @@ async function body(req) {
 async function oauth(req, res, url, requestBase) {
   const clientId = process.env.DERIV_CLIENT_ID;
   if (!clientId) return redirect(res, '/?login=setup');
-  const redirectUri = new URL('/api/deriv/callback', origin).href;
+  // This must match the OAuth redirect registered in the Deriv dashboard exactly.
+  const redirectUri = new URL('/callback', origin).href;
   if (url.pathname.endsWith('/start')) {
     if (requestBase.origin !== origin.origin) return redirect(res, new URL('/api/deriv/start', origin).href);
     const id = random();

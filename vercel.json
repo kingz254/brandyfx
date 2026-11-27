@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/callback",
+      "destination": "/api/handler?path=deriv/callback"
+    },
+    {
       "source": "/api/:path*",
       "destination": "/api/handler?path=:path*"
     }
