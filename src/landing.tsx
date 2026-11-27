@@ -62,8 +62,8 @@ function SocialGlyph({ kind }: { kind: (typeof socialMeta)[number]['kind'] }) {
   return <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
 }
 
-function SocialLinks({ settings, className = '' }: { settings: PublicSettings; className?: string }) {
-  const links = socialMeta.filter(({ key }) => socialHref(settings, key));
+function SocialLinks({ settings, className = '', only }: { settings: PublicSettings; className?: string; only?: SocialKey[] }) {
+  const links = socialMeta.filter(({ key }) => (!only || only.includes(key)) && socialHref(settings, key));
   if (!links.length) return null;
   return <nav className={`site-social-links ${className}`} aria-label="Contact BrandyFx">
     {links.map(({ key, label, kind }) => <a key={key} href={socialHref(settings, key)} aria-label={label}
@@ -497,7 +497,7 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav ref={tabsRef} className="landing-tabs" aria-label="Main pages" onClick={() => { if (tabsRef.current) sessionStorage.setItem('brandyfx-tabs-scroll', String(tabsRef.current.scrollLeft)); }}>{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}{payment?.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <a href={tabHref('verify')} aria-current={currentTab === 'verify' ? 'page' : undefined}>Verify</a>}</nav>
-      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><details className="member-account-menu"><summary className="member-welcome" aria-label={`Account menu for ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong><span className="member-account-caret" aria-hidden="true">⌄</span></summary><div className="member-account-popover"><button type="button" onClick={() => void copyRotNumber()}>{copyStatus || 'Copy app ID'}</button><button type="button" onClick={onSignOut}>Sign out</button></div></details><a className="landing-primary" href="/?desk">Signals <span aria-hidden="true">↗</span></a></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header" only={['socialTelegram', 'socialEmail']}/><details className="member-account-menu"><summary className="member-welcome" aria-label={`Account menu for ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong><span className="member-account-caret" aria-hidden="true">⌄</span></summary><div className="member-account-popover"><button type="button" onClick={() => void copyRotNumber()}>{copyStatus || 'Copy app ID'}</button><button type="button" onClick={onSignOut}>Sign out</button></div></details><a className="landing-primary" href="/?desk">Signals <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
     <footer className="landing-footer">
