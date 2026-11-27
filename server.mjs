@@ -90,14 +90,15 @@ async function siteSettings() {
 }
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
-const memberState = id => one(`SELECT COALESCE(
-  CASE WHEN s.account_id LIKE 'ROT%' THEN s.account_id END,
-  (SELECT stored.account_id FROM unnest(s.accounts) AS stored(account_id)
-    WHERE stored.account_id LIKE 'ROT%' ORDER BY stored.account_id LIMIT 1)
-  ) AS account_id,s.expires,
-  (SELECT max(expires) FROM payments WHERE account_id=s.account_id AND status='approved'
+const memberState = id => one(`SELECT real_account.account_id,s.expires,
+  (SELECT max(expires) FROM payments WHERE account_id=real_account.account_id AND status='approved'
     AND revoked_at IS NULL AND expires>now()) AS pass_until
-  FROM sessions s WHERE s.id=$1 AND s.expires>now()`, [id]);
+  FROM sessions s CROSS JOIN LATERAL (SELECT COALESCE(
+    CASE WHEN s.account_id LIKE 'ROT%' THEN s.account_id END,
+    (SELECT stored.account_id FROM unnest(s.accounts) AS stored(account_id)
+      WHERE stored.account_id LIKE 'ROT%' ORDER BY stored.account_id LIMIT 1)
+  ) AS account_id) AS real_account
+  WHERE s.id=$1 AND s.expires>now()`, [id]);
 
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw error(415, 'Expected JSON.');
