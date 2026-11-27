@@ -126,7 +126,7 @@ const memberState = id => one(`SELECT real_account.account_id,s.expires,s.device
   LEFT JOIN payments p ON p.account_id=real_account.account_id AND p.status='approved'
     AND p.revoked_at IS NULL AND p.deleted_at IS NULL AND (p.expires IS NULL OR p.expires>now())
   WHERE s.id=$1 AND s.expires>now()
-  GROUP BY real_account.account_id,s.expires`, [id]);
+  GROUP BY real_account.account_id,s.expires,s.device_hash`, [id]);
 
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw error(415, 'Expected JSON.');
