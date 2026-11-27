@@ -118,11 +118,10 @@ const memberState = id => one(`SELECT real_account.account_id,s.expires,s.device
   coalesce(array_agg(DISTINCT p.package) FILTER (WHERE p.id IS NOT NULL), ARRAY[]::text[]) AS packages,
   coalesce(bool_or(p.expires IS NULL), false) AS lifetime_access,
   max(p.expires) FILTER (WHERE p.expires>now()) AS pass_until
-  FROM sessions s CROSS JOIN LATERAL (SELECT COALESCE(
-    CASE WHEN s.account_id LIKE 'ROT%' THEN s.account_id END,
-    (SELECT stored.account_id FROM unnest(s.accounts) AS stored(account_id)
-      WHERE stored.account_id LIKE 'ROT%' ORDER BY stored.account_id LIMIT 1)
-  ) AS account_id) AS real_account
+  FROM sessions s CROSS JOIN LATERAL (SELECT CASE
+    WHEN s.account_id LIKE 'ROT%' THEN s.account_id
+    WHEN cardinality(s.accounts)=1 AND s.accounts[1] LIKE 'ROT%' THEN s.accounts[1]
+    ELSE NULL END AS account_id) AS real_account
   LEFT JOIN payments p ON p.account_id=real_account.account_id AND p.status='approved'
     AND p.revoked_at IS NULL AND p.deleted_at IS NULL AND (p.expires IS NULL OR p.expires>now())
   WHERE s.id=$1 AND s.expires>now()
@@ -188,12 +187,12 @@ async function oauth(req, res, url, requestBase) {
     const accounts = await listDerivAccounts(access_token, clientId);
     if (!accounts.length) return redirect(res, '/?login=account', clear);
     const device = deviceIdentity(req, requestBase.protocol === 'https:');
-    if (await isDeviceLockedToAnother(accounts[0], hash(device.value))) return redirect(res, '/?login=device', clear);
+    if (accounts.length === 1 && await isDeviceLockedToAnother(accounts[0], hash(device.value))) return redirect(res, '/?login=device', clear);
     const id = random();
     const seconds = Math.min(Math.floor(expires_in), 86400);
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions(id,account_id,accounts,expires,device_hash) VALUES($2,$3,$4,now()+$5*interval '1 second',$6)`,
-    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds, hash(device.value)]);
+    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds, hash(device.value)]);
     return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, ...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
@@ -283,12 +282,12 @@ async function api(req, res, url) {
     const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID, true);
     if (!accounts.length) throw error(403, 'No active real ROT account was found for this token.');
     const device = deviceIdentity(req, requestBase.protocol === 'https:');
-    if (await isDeviceLockedToAnother(accounts[0], hash(device.value))) throw error(409, DEVICE_LOCK_MESSAGE);
+    if (accounts.length === 1 && await isDeviceLockedToAnother(accounts[0], hash(device.value))) throw error(409, DEVICE_LOCK_MESSAGE);
     const id = random();
     const seconds = 12 * 60 * 60;
     await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
       INSERT INTO sessions(id,account_id,accounts,expires,device_hash) VALUES($2,$3,$4,now()+$5*interval '1 second',$6)`,
-    [key(req, 'bfx_session'), hash(id), accounts[0], accounts, seconds, hash(device.value)]);
+    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds, hash(device.value)]);
     addCookies(res, [...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
     return json(res, 200, { ok: true });
   }
@@ -296,7 +295,7 @@ async function api(req, res, url) {
   const state = await memberState(id);
   const account = state?.account_id;
   const admin = adminIds.has(account) || passwordAdmin;
-  const device = account ? deviceIdentity(req, requestBase.protocol === 'https:') : null;
+  const device = state ? deviceIdentity(req, requestBase.protocol === 'https:') : null;
   const currentDeviceHash = device ? hash(device.value) : null;
   if (device?.setCookie) addCookies(res, [device.setCookie]);
   if (account && !admin) {
@@ -330,6 +329,7 @@ async function api(req, res, url) {
   }
 
   if (method === 'GET' && path === '/api/me') {
+    const accounts = (await one('SELECT accounts FROM sessions WHERE id=$1', [id]))?.accounts || [];
     const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,deleted_at,package,reference,amount,currency,customer_name,customer_email,customer_country,rot_number FROM payments
       WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`, [account]) : null;
     const profile = account ? await one(`SELECT customer_name AS name,customer_email AS email,customer_country AS country,rot_number
@@ -340,9 +340,17 @@ async function api(req, res, url) {
       ...(packages.some(p => ['overUnder','regular','matches','premium'].includes(p)) ? ['range'] : []),
       ...(packages.some(p => ['matches','premium'].includes(p)) ? ['digit'] : []),
     ];
-    return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, admin,
+    return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, accounts, admin,
       passUntil: state?.lifetime_access ? null : state?.pass_until, lifetimeAccess: Boolean(state?.lifetime_access),
       allowedFamilies, payment, profile, offer: account ? await offer() : null });
+  }
+  if (method === 'POST' && path === '/api/account/select') {
+    const { accountId } = await body(req);
+    if (typeof accountId !== 'string' || !state.accounts?.includes(accountId) || !accountId.startsWith('ROT')) throw error(400, 'Choose a linked Deriv real account.');
+    if (await isDeviceLockedToAnother(accountId, currentDeviceHash)) throw error(409, DEVICE_LOCK_MESSAGE);
+    if (!await bindAccountDevice(accountId, currentDeviceHash)) throw error(409, DEVICE_LOCK_MESSAGE);
+    await db.query('UPDATE sessions SET account_id=$2 WHERE id=$1', [id, accountId]);
+    return json(res, 200, { ok: true });
   }
   if (method === 'POST' && path === '/api/logout') {
     if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);

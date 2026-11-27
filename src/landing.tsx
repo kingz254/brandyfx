@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 
@@ -391,9 +391,15 @@ function PurchaseDialog({ plan, settings, payment, profile, onClose }: { plan: (
 export default function Landing({ markets, tab, settings, simulated = false, rotNumber, hasAccess = false, onSignOut, payment, profile }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean; rotNumber: string; hasAccess?: boolean; onSignOut: () => void; payment?: ClientPayment; profile?: ClientProfile | null }) {
   const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
+  const tabsRef = useRef<HTMLElement | null>(null);
   const shownMarkets = markets.slice(0, 5);
   const pageTabs = ['refund', 'privacy', 'terms', 'contact', 'verify'];
   const currentTab = tabs.some(([id]) => id === tab) || pageTabs.includes(tab) ? tab : 'home';
+  useEffect(() => {
+    const saved = sessionStorage.getItem('brandyfx-tabs-scroll');
+    if (saved !== null && tabsRef.current) tabsRef.current.scrollLeft = Number(saved) || 0;
+    sessionStorage.removeItem('brandyfx-tabs-scroll');
+  }, []);
   const live = shownMarkets.some(market => market.live);
   async function copyRotNumber() {
     try {
@@ -487,7 +493,7 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
   return <main className="landing">
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
-      <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}{payment?.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <a href={tabHref('verify')} aria-current={currentTab === 'verify' ? 'page' : undefined}>Verify</a>}</nav>
+      <nav ref={tabsRef} className="landing-tabs" aria-label="Main pages" onClick={() => { if (tabsRef.current) sessionStorage.setItem('brandyfx-tabs-scroll', String(tabsRef.current.scrollLeft)); }}>{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}{payment?.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <a href={tabHref('verify')} aria-current={currentTab === 'verify' ? 'page' : undefined}>Verify</a>}</nav>
       <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><details className="member-account-menu"><summary className="member-welcome" aria-label={`Account menu for ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong><span className="member-account-caret" aria-hidden="true">⌄</span></summary><div className="member-account-popover"><button type="button" onClick={() => void copyRotNumber()}>{copyStatus || 'Copy app ID'}</button><button type="button" onClick={onSignOut}>Sign out</button></div></details><a className="landing-primary" href="/?desk">Signals <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}

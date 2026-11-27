@@ -12,7 +12,7 @@ type Profile = { name: string; email: string; country: string; rot_number: strin
 type Payment = { id: string; status: string; created: string; expires?: string | null; revoked_at?: string; deleted_at?: string | null; package?: string; reference?: string; amount?: string; currency?: string; customer_name?: string; customer_email?: string; customer_country?: string; rot_number?: string };
 type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string; device_locked: boolean };
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
-type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string | null; lifetimeAccess?: boolean; allowedFamilies?: string[]; payment?: Payment; profile?: Profile | null; offer?: Offer };
+type Member = { ready?: boolean; launched?: boolean; account?: string; accounts?: string[]; admin?: boolean; passUntil?: string | null; lifetimeAccess?: boolean; allowedFamilies?: string[]; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 function PublicLegal({ kind }: { kind: 'terms' | 'privacy' }) {
   return <main className="tab-page legal-page public-legal"><header className="tab-heading"><p className="landing-kicker">BrandyFx · Legal</p>
@@ -341,6 +341,8 @@ function App() {
   const [pending, setPending] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
   const [tokenValue, setTokenValue] = useState('');
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installOpen, setInstallOpen] = useState(false);
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
   const allowedFamilies = member.allowedFamilies || [];
   const canView = Boolean(member.account && (member.admin || (member.launched && allowedFamilies.length > 0)));
@@ -395,6 +397,29 @@ function App() {
     document.documentElement.style.setProperty('--glass-opacity', String(settings.glassOpacity));
   }, [settings.videoOpacity, settings.glassOpacity]);
   useEffect(() => {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+    const dismissed = localStorage.getItem('bfx-install-dismissed') === '1';
+    const onInstallAvailable = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      localStorage.setItem('bfx-install-dismissed', '1');
+      setInstallOpen(false);
+      setInstallPrompt(null);
+    };
+    window.addEventListener('beforeinstallprompt', onInstallAvailable);
+    window.addEventListener('appinstalled', onInstalled);
+    if (member.account && !standalone && !dismissed) setInstallOpen(true);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onInstallAvailable);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, [member.account]);
+  useEffect(() => {
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) void navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  }, []);
+  useEffect(() => {
   if (preview) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
@@ -442,6 +467,13 @@ function App() {
       setTokenDialog(false);
     }
   }
+  async function installApp() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    const choice = await installPrompt.userChoice;
+    if (choice.outcome === 'accepted') setInstallOpen(false);
+    setInstallPrompt(null);
+  }
   const privateHome = Boolean(member.account && !route.has('desk') && !adminRoute);
   const publicLegal = !member.account && route.has('legal');
   const showingDesk = preview || (canView && route.has('desk'));
@@ -454,6 +486,7 @@ function App() {
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
   else if (publicLegal) page = <PublicLegal kind={route.get('legal') === 'privacy' ? 'privacy' : 'terms'} />;
+  else if (!adminRoute && member.accounts && member.accounts.length > 1 && !member.account) page = <main className="account-choice-page"><header><p className="landing-kicker">Deriv account</p><h1>Choose your real account</h1><p>Select the ROT account you want to use with BrandyFx. Demo accounts are not supported.</p></header><section className="account-choice-list" aria-label="Available real accounts">{member.accounts.filter(account => account.startsWith('ROT')).map(account => <button type="button" key={account} onClick={() => void run('account/select', { accountId: account })} disabled={pending}>{account}<span aria-hidden="true">→</span></button>)}</section></main>;
   else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
   else if (member.admin && tab === 'admin') page = <Admin run={run} />;
@@ -497,7 +530,7 @@ function App() {
   </header> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
     {showingDesk || member.account || member.admin ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
-      <footer className="risk-footer"><nav aria-label="Legal"><a href="/?legal=terms">Terms</a><a href="/?legal=privacy">Privacy Policy</a></nav><p><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
+      <footer className="risk-footer"><nav aria-label="Legal"><a href="/?legal=terms">Terms</a><a href="/?legal=privacy">Privacy Policy</a></nav><details className="risk-disclaimer"><summary>Trading risk disclaimer</summary><p><strong>Disclaimer:</strong> {derivDisclaimer}</p></details></footer>}
     </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget && !pending) { setTokenDialog(false); setTokenValue(''); } }}>
       <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
@@ -512,7 +545,13 @@ function App() {
         </form>
       </section>
     </div>}
+    {installOpen && member.account && <div className="dialog-scrim install-scrim"><section className="token-dialog install-dialog" role="dialog" aria-modal="true" aria-labelledby="install-title"><button className="dialog-close" type="button" aria-label="Close" onClick={() => { localStorage.setItem('bfx-install-dismissed', '1'); setInstallOpen(false); }}>×</button><p className="landing-kicker">BrandyFx app</p><h2 id="install-title">Install BrandyFx</h2><p>Add BrandyFx to your home screen for quick access to your signal workspace.</p>{installPrompt ? <button className="primary" type="button" onClick={() => void installApp()}>Install app</button> : <p className="install-help">Use your browser menu and choose “Install app” or “Add to Home screen”.</p>}<button className="install-later" type="button" onClick={() => { localStorage.setItem('bfx-install-dismissed', '1'); setInstallOpen(false); }}>Continue in browser</button></section></div>}
   </>;
+}
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
 }
 
 createRoot(document.getElementById('root')!).render(<App />);
