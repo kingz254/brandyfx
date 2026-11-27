@@ -277,7 +277,7 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
         <td data-label="Deriv / ROT">{order.rot_number || order.account_id}<small>{order.device_locked ? 'Device locked' : 'No device lock'}</small></td><td data-label="Package">{planNames[order.package] || order.package}<small>One-time · lifetime</small></td><td data-label="Paid">{order.currency} {Number(order.amount).toFixed(2)}</td>
         <td data-label="Transaction hash"><code>{order.reference}</code></td><td data-label="Status"><span className={`record-status record-${order.deleted_at ? 'deleted' : order.revoked_at ? 'revoked' : order.status}`}>{order.deleted_at ? 'Deleted' : order.revoked_at ? 'Revoked' : order.status}</span></td>
         <td data-label="Actions"><div className="record-actions">{order.status === 'pending' && !order.deleted_at && <><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve · lifetime</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></>}
-          {order.device_locked && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Reset ${order.rot_number || order.account_id}'s device lock? This signs out their current sessions.`) && await run('admin/device-lock', { accountId: order.account_id })) void load(); }}>Reset device lock</button>}
+          {order.device_locked && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Change ${order.rot_number || order.account_id}'s registered device? The current device session will be removed. Their next sign-in will register the new device.`) && await run('admin/device-lock', { accountId: order.account_id })) void load(); }}>Change device access</button>}
           {order.status === 'approved' && !order.revoked_at && !order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'revoke' })) void load(); }}>Revoke access</button>}
           {order.status === 'approved' && <><button type="button" className="landing-secondary" onClick={() => downloadReceipt(receipt(order))}>Download receipt</button>{order.customer_email && <a className="landing-secondary" href={receiptMailto(order.customer_email, receipt(order))}>Email receipt</a>}</>}
           {!order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Remove ${order.customer_name || order.account_id}'s record and revoke access?`)) { if (await run('admin/payment', { paymentId: order.id, action: 'delete' })) void load(); } }}>Delete record</button>}
@@ -445,6 +445,7 @@ function App() {
   const privateHome = Boolean(member.account && !route.has('desk') && !adminRoute);
   const publicLegal = !member.account && route.has('legal');
   const showingDesk = preview || (canView && route.has('desk'));
+  const deviceConflict = notice.toLowerCase().includes('locked to another device');
   let page: ReactNode;
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin && tab === 'admin') page = <Admin run={run}/>;
@@ -456,6 +457,14 @@ function App() {
   else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
   else if (member.admin && tab === 'admin') page = <Admin run={run} />;
+  else if (deviceConflict) page = <main className="login-page"><a className="login-brand" href="/" aria-label="BrandyFx home"><img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" /></a>
+    <section className="login-card device-conflict-card"><p className="landing-kicker">DEVICE ACCESS</p><h1>Device lock conflict</h1>
+      <p>This Deriv account is registered to another device. Contact BrandyFx if you want to change the device you use. You do not need to pay again.</p>
+      {settings.socialWhatsApp && <a className="primary deriv-login" href={settings.socialWhatsApp} target="_blank" rel="noreferrer">Contact BrandyFx on WhatsApp</a>}
+      {settings.socialEmail && <a className="token-login device-contact-link" href={`mailto:${settings.socialEmail}?subject=${encodeURIComponent('Request to change BrandyFx device access')}`}>Email BrandyFx</a>}
+      {!settings.socialWhatsApp && !settings.socialEmail && <p>Use the BrandyFx contact details shared with you to request a device change.</p>}
+      <a className="login-terms" href="/?legal=terms">Back to sign in</a>
+    </section></main>;
   else if (member.account) page = <Access member={member} />;
   else page = <main className="login-page">
     <a className="login-brand" href="/" aria-label="BrandyFx home">
