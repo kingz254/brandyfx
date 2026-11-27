@@ -18,6 +18,7 @@ const adminPasswordSalt = process.env.KINGZ_ADMIN_PASSWORD_SALT || '';
 const adminPasswordHash = process.env.KINGZ_ADMIN_PASSWORD_HASH || '';
 const adminSessionSecret = process.env.KINGZ_ADMIN_SESSION_SECRET || '';
 const loginFailures = new Map();
+const derivLoginFailures = new Map();
 const approved = process.env.APPROVED_RULE_VERSION === VERSION;
 const DEFAULT_SITE_SETTINGS = {
   backgroundUrl: '/media/brandyfx-background.mp4', videoOpacity: 0.5, glassOpacity: 0.72,
@@ -124,8 +125,9 @@ async function body(req) {
 async function oauth(req, res, url, requestBase) {
   const clientId = process.env.DERIV_CLIENT_ID;
   if (!clientId) return redirect(res, '/?login=setup');
-  const redirectUri = new URL('/api/deriv/callback', requestBase).href;
+  const redirectUri = new URL('/api/deriv/callback', origin).href;
   if (url.pathname.endsWith('/start')) {
+    if (requestBase.origin !== origin.origin) return redirect(res, new URL('/api/deriv/start', origin).href);
     const id = random();
     const state = random();
     const verifier = random();
@@ -145,16 +147,10 @@ async function oauth(req, res, url, requestBase) {
     const token = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', signal: AbortSignal.timeout(12000),
       body: new URLSearchParams({ grant_type: 'authorization_code', code: url.searchParams.get('code'),
         redirect_uri: redirectUri, client_id: clientId, code_verifier: attempt.verifier }) });
-    if (!token.ok) return redirect(res, '/?login=failed', clear);
+    if (!token.ok) return redirect(res, token.status === 400 || token.status === 401 ? '/?login=invalid' : token.status === 403 ? '/?login=scope' : '/?login=failed', clear);
     const { access_token, expires_in } = await token.json();
     if (typeof access_token !== 'string' || !Number.isFinite(expires_in) || expires_in < 1) return redirect(res, '/?login=failed', clear);
-    const lookup = await fetch('https://api.derivws.com/trading/v1/options/accounts', { signal: AbortSignal.timeout(12000),
-      headers: { Authorization: 'Bearer ' + access_token, 'Deriv-App-ID': clientId } });
-    if (!lookup.ok) return redirect(res, '/?login=failed', clear);
-    const { data } = await lookup.json();
-    const accounts = [...new Set((Array.isArray(data) ? data : [])
-      .filter(item => item.status === 'active' && typeof item.account_id === 'string' && item.account_id.length <= 80)
-      .map(item => item.account_id))];
+    const accounts = await listDerivAccounts(access_token, clientId);
     if (!accounts.length) return redirect(res, '/?login=account', clear);
     const id = random();
     const seconds = Math.min(Math.floor(expires_in), 86400);
@@ -164,7 +160,44 @@ async function oauth(req, res, url, requestBase) {
     return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
-    return redirect(res, '/?login=failed', clear);
+    const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : 'failed';
+    return redirect(res, `/?login=${loginStatus}`, clear);
+  }
+}
+
+async function listDerivAccounts(token, clientId) {
+  let response;
+  try {
+    response = await fetch('https://api.derivws.com/trading/v1/options/accounts', { signal: AbortSignal.timeout(12000),
+      headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': clientId } });
+  } catch (cause) {
+    console.error('Deriv account verification unavailable', cause.code || cause.name);
+    throw error(503, 'Deriv could not verify sign-in right now. Try again shortly.');
+  }
+  if (response.status === 401) throw error(401, 'Deriv did not accept that credential. Check it and try again.');
+  if (response.status === 403) throw error(403, 'This Deriv credential needs the trade scope to list Options accounts.');
+  if (response.status === 429 || response.status >= 500) throw error(503, 'Deriv is temporarily unavailable. Please try again shortly.');
+  if (!response.ok) throw error(503, 'Deriv could not verify sign-in. Please try again later.');
+  let payload;
+  try { payload = await response.json(); }
+  catch { throw error(503, 'Deriv returned an unreadable account response. Please try again.'); }
+  const data = payload && typeof payload === 'object' ? payload.data : null;
+  return [...new Set((Array.isArray(data) ? data : [])
+    .filter(item => item?.status === 'active' && typeof item.account_id === 'string' && item.account_id.length <= 80)
+    .map(item => item.account_id))];
+}
+
+function checkDerivLoginLimit(req) {
+  const client = req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const record = derivLoginFailures.get(client);
+  if (record?.blockedUntil > now) throw error(429, 'Too many sign-in attempts. Wait a few minutes and try again.');
+  const next = record?.windowUntil > now ? record : { count: 0, windowUntil: now + 15 * 60 * 1000 };
+  next.count += 1;
+  if (next.count >= 12) next.blockedUntil = now + 15 * 60 * 1000;
+  derivLoginFailures.set(client, next);
+  if (derivLoginFailures.size > 2000) {
+    for (const [address, attempt] of derivLoginFailures) if (attempt.windowUntil <= now && attempt.blockedUntil <= now) derivLoginFailures.delete(address);
   }
 }
 
@@ -202,6 +235,22 @@ async function api(req, res, url) {
   if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
   if (!db) throw error(503, 'The service is awaiting setup.');
   if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url, requestBase);
+  if (method === 'POST' && path === '/api/deriv/token') {
+    if (!process.env.DERIV_CLIENT_ID) throw error(503, 'Deriv sign-in is not configured yet.');
+    checkDerivLoginLimit(req);
+    const input = await body(req);
+    const token = typeof input.token === 'string' ? input.token.trim() : '';
+    if (!token || token.length > 4096 || /[\u0000-\u001f\u007f]/.test(token)) throw error(400, 'Enter a valid Deriv API token.');
+    const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID);
+    if (!accounts.length) throw error(403, 'No active Deriv Options account was found for this token.');
+    const id = random();
+    const seconds = 12 * 60 * 60;
+    await db.query(`WITH stale AS (DELETE FROM sessions WHERE id=$1 OR expires<=now())
+      INSERT INTO sessions VALUES($2,$3,$4,now()+$5*interval '1 second')`,
+    [key(req, 'bfx_session'), hash(id), accounts.length === 1 ? accounts[0] : null, accounts, seconds]);
+    res.setHeader('Set-Cookie', cookie('bfx_session', id, seconds, requestBase.protocol === 'https:'));
+    return json(res, 200, { ok: true });
+  }
   const id = key(req, 'bfx_session');
   const state = await memberState(id);
   const account = state?.account_id;

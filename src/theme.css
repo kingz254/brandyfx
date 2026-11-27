@@ -438,6 +438,7 @@ footer { margin-top: 1.4rem; }
 }
 .login-card h1 { font: 650 1.65rem/1.15 var(--numbers); letter-spacing: -.06em; }
 .login-card > p { color: var(--night-muted); }
+.login-card .login-setup-note { margin-top: .65rem; color: var(--night-text); font-size: .82rem; }
 .deriv-login { width: 100%; margin-top: 1rem; min-height: 2.75rem; color: var(--night-ink); background: linear-gradient(120deg, var(--login-action), var(--emerald-bright)); border: 0; border-radius: .68rem; }
 .deriv-login:hover { background: var(--login-action-hover); }
 a.deriv-login { display: flex; align-items: center; justify-content: center; text-decoration: none; }
@@ -467,7 +468,7 @@ a.deriv-login { display: flex; align-items: center; justify-content: center; tex
 .token-dialog h2 { margin: 0 2rem .65rem 0; }
 .token-dialog p { color: var(--night-muted); }
 .token-dialog label { margin-top: 1rem; }
-.token-dialog input { background: var(--login-input); color: var(--night-muted); }
+.token-dialog input { background: var(--login-input); color: var(--night-text); }
 .token-dialog .token-note { margin-top: .65rem; font-size: .8rem; }
 .token-dialog .primary { margin-top: 1rem; min-width: 7rem; }
 .dialog-close { position: absolute; top: .5rem; right: .65rem; width: 2rem; height: 2rem; border: 0; border-radius: 50%; background: var(--login-inset); font-size: 1.3rem; }

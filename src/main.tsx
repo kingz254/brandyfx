@@ -24,7 +24,6 @@ const route = new URLSearchParams(location.search);
 const preview = route.has('preview');
 const DEVELOPMENT_SIGNAL_SIMULATION = true;
 const home = route.has('home');
-const deskEntry = route.has('desk');
 const adminRoute = location.pathname === '/kingz.html';
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
@@ -320,6 +319,7 @@ function AdminLogin({ pending, notice, run }: { pending: boolean; notice: string
 const loginMessage: Record<string, string> = {
   setup: 'Deriv sign-in is awaiting setup.', invalid: 'This sign-in link expired. Please start again.',
   denied: 'Deriv sign-in was canceled.', failed: 'Deriv sign-in is temporarily unavailable.',
+  scope: 'Your Deriv token needs the trade permission to access Options accounts.',
   account: 'No active Deriv Options account was found.',
 };
 
@@ -335,6 +335,7 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [pending, setPending] = useState(false);
   const [tokenDialog, setTokenDialog] = useState(false);
+  const [tokenValue, setTokenValue] = useState('');
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
   const canView = Boolean(member.admin || (member.account && member.launched && member.passUntil));
   useEffect(() => {
@@ -422,6 +423,15 @@ function App() {
       setPending(false);
     }
   }
+  async function submitToken(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const token = tokenValue.trim();
+    if (!token || pending) return;
+    if (await run('deriv/token', { token })) {
+      setTokenValue('');
+      setTokenDialog(false);
+    }
+  }
   const showingDesk = preview || (canView && tab === 'desk');
   let page: ReactNode;
   if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
@@ -443,9 +453,8 @@ function App() {
     <section className="login-card">
       <h1>Sign in</h1>
       <p>Sign in to follow live Deriv signals and manage your access.</p>
-      {deskEntry ? member.ready ? <a className="primary deriv-login" href="/api/deriv/start">Log in with Deriv</a> :
-        <p role="status">Deriv sign-in is awaiting setup.</p> :
-        <button className="primary deriv-login" type="button" onClick={() => window.location.assign('/?home')}>Log in with Deriv</button>}
+      <a className="primary deriv-login" href="/api/deriv/start">Log in with Deriv</a>
+      {!member.ready && <p className="login-setup-note" role="status">Deriv sign-in is awaiting server configuration.</p>}
       <div className="login-divider"><span>or</span></div>
       <button className="token-login" type="button" onClick={() => setTokenDialog(true)}><span aria-hidden="true">⌘</span> Log in with API token</button>
       <p className="login-terms">By continuing, you agree to the <a href="#terms">Terms</a> &amp; <a href="#privacy">Privacy Policy</a>.</p>
@@ -469,14 +478,17 @@ function App() {
     {showingDesk || member.account || member.accounts?.length ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     </>}
-    {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget) setTokenDialog(false); }}>
+    {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget && !pending) { setTokenDialog(false); setTokenValue(''); } }}>
       <section className="token-dialog" role="dialog" aria-modal="true" aria-labelledby="token-title">
-        <button className="dialog-close" type="button" aria-label="Close" onClick={() => setTokenDialog(false)}>×</button>
+        <button className="dialog-close" type="button" aria-label="Close" disabled={pending} onClick={() => { setTokenDialog(false); setTokenValue(''); }}>×</button>
         <h2 id="token-title">Log in with API token</h2>
-        <p>Token sign-in will be enabled after secure verification is configured.</p>
-        <label>Deriv API token<input type="password" autoComplete="off" disabled placeholder="Not available yet" /></label>
-        <p className="token-note">Your token is not collected or stored on this page.</p>
-        <button className="primary" type="button" onClick={() => setTokenDialog(false)}>Got it</button>
+        <p>Verify the Deriv Options accounts connected to your token.</p>
+        <form onSubmit={submitToken}>
+          <label>Deriv API token<input type="password" autoComplete="off" autoCapitalize="none" spellCheck={false} maxLength={4096} required value={tokenValue} onChange={event => setTokenValue(event.target.value)} /></label>
+          <p className="token-note">Use a token with the trade permission. It is sent securely for verification and is not saved by BrandyFx.</p>
+          {notice && <p className="token-note" role="alert">{notice}</p>}
+          <button className="primary" type="submit" disabled={pending || !tokenValue.trim()}>{pending ? 'Verifying with Deriv…' : 'Verify and sign in'}</button>
+        </form>
       </section>
     </div>}
   </>;

@@ -9,10 +9,10 @@ Run `npm ci` and `npm run dev`. Open `http://127.0.0.1:5173` for the sign-in pag
 ## Staging
 
 1. Copy `.env.example` to `.env`. Set a PostgreSQL connection string and create the schema with `node --env-file=.env db.mjs migrate`.
-2. Create a New API OAuth client in Deriv and register the exact `APP_ORIGIN/api/deriv/callback` URI. Register the `trade` scope for the Options account lookup. Set the client ID and an allowlist of administrator Deriv Options account IDs. Use the same verified Options account to retain a pass.
+2. Create a New API OAuth client in Deriv. Set `APP_ORIGIN` to the canonical HTTPS origin of the deployed BrandyFx site, then register the exact `{APP_ORIGIN}/api/deriv/callback` URI in Deriv. Register the `trade` scope for the Options account lookup. Set the app's `DERIV_CLIENT_ID` and an allowlist of administrator Deriv Options account IDs. Use the same verified Options account to retain a pass.
 3. Run `npm run worker` and `npm run dev` locally. For HTTPS staging, run `npm run build` and `npm start` behind a reverse proxy. On Vercel, run the worker as a separate persistent Node service connected to the same database. The desk polls for signals through `/api/signals`.
 4. Sign in as an allowlisted admin and review the live desk and replay outputs. Configure the actual fee, currency, duration, and payment instructions. Enable paid access by setting `APPROVED_RULE_VERSION=brandyfx-digits-2` on the app server only after approving the signals. Keep it unset while evaluating them.
-5. Check member OAuth and the manual payment workflow in staging. Approve only after verifying the reference, currency, and amount against the payment account. Verify logout, expiry, revocation, and reconnect with the desk open.
+5. Check member OAuth and API-token sign-in in staging. API tokens must include the `trade` permission; BrandyFx uses the token to verify Options accounts and discards it after verification. Approve payments only after verifying the reference, currency, and amount against the payment account. Verify logout, expiry, revocation, and reconnect with the desk open.
 
 The server and the worker share PostgreSQL. The worker holds a database lock to prevent duplicate ingestion from a second worker. Monitor its request errors, the market freshness status, and app/database availability. Re-run `npm test` and `npm run build` before deployment.
 
