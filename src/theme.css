@@ -480,6 +480,10 @@ a.deriv-login { display: flex; align-items: center; justify-content: center; tex
 .landing-nav nav a { color: var(--night-muted); font-size: .82rem; white-space: nowrap; transition: color .18s ease; }
 .landing-nav nav a:hover { color: var(--emerald-bright); }
 .landing-nav-actions, .landing-actions { display: flex; align-items: center; gap: .55rem; }
+.member-welcome { display: grid; gap: .12rem; min-width: 8.5rem; margin: 0; padding: .4rem .75rem; border: 1px solid var(--glass-edge); border-radius: 1rem; background: linear-gradient(145deg, var(--glass-edge), var(--glass)); line-height: 1.15; }
+.member-welcome span { color: var(--night-muted); font-size: .65rem; }
+.member-welcome strong { overflow: hidden; color: var(--emerald-bright); font: 600 .78rem/1.2 var(--numbers); text-overflow: ellipsis; }
+.member-signout { flex: 0 0 auto; cursor: pointer; font: inherit; white-space: nowrap; }
 .landing-primary, .landing-secondary { display: inline-flex; justify-content: center; align-items: center; gap: .55rem; min-height: 2.7rem; padding: .62rem 1rem; border: 1px solid var(--glass-edge); border-radius: 99rem; font-size: .86rem; text-decoration: none; transition: transform .18s ease, background-color .18s ease, box-shadow .18s ease; }
 .landing-primary { color: var(--night-ink); border-color: var(--emerald-bright); background: linear-gradient(120deg, var(--emerald), var(--emerald-bright)); box-shadow: 0 6px 22px var(--emerald-glow); font-weight: 700; }
 .landing-secondary { color: var(--night-text); background: var(--glass); backdrop-filter: blur(14px); }
@@ -608,6 +612,9 @@ a.deriv-login { display: flex; align-items: center; justify-content: center; tex
   .landing-nav nav a { font-size: .78rem; }
   .landing-nav-actions { gap: .4rem; }
   .landing-nav-actions .landing-secondary { display: none; }
+  .landing-nav-actions .member-signout { display: inline-flex; }
+  .member-welcome { min-width: 6.3rem; padding: .35rem .5rem; }
+  .member-welcome strong { max-width: 7rem; font-size: .68rem; }
   .landing-primary, .landing-secondary { min-height: 2.65rem; padding-inline: .85rem; }
   .landing-hero { grid-template-columns: minmax(0, 1fr); gap: 2rem; min-height: auto; padding-block: 4rem 2rem; }
   .landing-hero h1 { font-size: clamp(3.2rem, 13vw, 5rem); }

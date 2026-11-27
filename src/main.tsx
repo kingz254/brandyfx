@@ -21,9 +21,8 @@ const contractGuides = {
 };
 const marketOrder = ['R_10', 'R_25', 'R_50', 'R_75', 'R_100', '1HZ10V', '1HZ15V', '1HZ25V', '1HZ30V', '1HZ50V', '1HZ75V', '1HZ90V', '1HZ100V'];
 const route = new URLSearchParams(location.search);
-const preview = route.has('preview');
+const preview = import.meta.env.DEV && route.has('preview');
 const DEVELOPMENT_SIGNAL_SIMULATION = true;
-const home = route.has('home');
 const adminRoute = location.pathname === '/kingz.html';
 const stamp = (date: string) => new Date(date).toLocaleTimeString([], { hour12: false });
 const dateLabel = (date: string) => new Date(date).toLocaleString();
@@ -328,8 +327,8 @@ function App() {
   const [settings, setSettings] = useState<PublicSettings>(defaultSettings);
   const [settingsReady, setSettingsReady] = useState(false);
   const [member, setMember] = useState<Member>({});
-  const [loaded, setLoaded] = useState(preview || home);
-  const [tab, setTab] = useState('desk');
+  const [loaded, setLoaded] = useState(preview);
+  const [tab, setTab] = useState(route.has('desk') ? 'desk' : 'home');
   const [signals, setSignals] = useState<Signal[]>([]);
   const [simulatedSignals, setSimulatedSignals] = useState<Signal[]>([]);
   const [connected, setConnected] = useState(false);
@@ -337,9 +336,9 @@ function App() {
   const [tokenDialog, setTokenDialog] = useState(false);
   const [tokenValue, setTokenValue] = useState('');
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
-  const canView = Boolean(member.admin || (member.account && member.launched && member.passUntil));
+  const canView = Boolean(member.account && (member.admin || (member.launched && member.passUntil)));
   useEffect(() => {
-    if (!DEVELOPMENT_SIGNAL_SIMULATION || home || adminRoute) return;
+    if (!DEVELOPMENT_SIGNAL_SIMULATION || adminRoute || !canView || tab !== 'desk') return;
     setSignals([]);
     setConnected(true);
     let timer: number;
@@ -364,7 +363,7 @@ function App() {
     };
     generateRound();
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [canView, tab]);
   async function refresh() {
     try {
       setMember(await api<Member>('me'));
@@ -385,13 +384,13 @@ function App() {
     document.documentElement.style.setProperty('--glass-opacity', String(settings.glassOpacity));
   }, [settings.videoOpacity, settings.glassOpacity]);
   useEffect(() => {
-  if (preview || home) return;
+  if (preview) return;
     void refresh();
     const timer = setInterval(() => void refresh(), 5000);
     return () => clearInterval(timer);
   }, []);
   useEffect(() => {
-    if (DEVELOPMENT_SIGNAL_SIMULATION || preview || home || adminRoute || !canView || tab !== 'desk') return;
+    if (DEVELOPMENT_SIGNAL_SIMULATION || preview || adminRoute || !canView || tab !== 'desk') return;
     let active = true;
     let timer: number;
     async function poll() {
@@ -432,13 +431,14 @@ function App() {
       setTokenDialog(false);
     }
   }
-  const showingDesk = preview || (canView && tab === 'desk');
+  const privateHome = Boolean(member.account && !route.has('desk') && !adminRoute);
+  const showingDesk = preview || (canView && route.has('desk'));
   let page: ReactNode;
-  if (home) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
-  else if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
+  if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
+  else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} />;
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
   else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
   else if (member.account) page = <Access member={member} />;
@@ -465,7 +465,7 @@ function App() {
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
   {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
-  {home ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
+  {privateHome ? page : <>{showingDesk || member.account || member.accounts?.length ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>

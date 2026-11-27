@@ -359,7 +359,7 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
   </div>;
 }
 
-export default function Landing({ markets, tab, settings, simulated = false }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean }) {
+export default function Landing({ markets, tab, settings, simulated = false, rotNumber, hasAccess = false, onSignOut }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean; rotNumber: string; hasAccess?: boolean; onSignOut: () => void }) {
   const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
   const shownMarkets = markets.slice(0, 5);
   const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
@@ -421,7 +421,7 @@ export default function Landing({ markets, tab, settings, simulated = false }: {
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><a className="landing-primary" href="/?desk">Open signal desk <span aria-hidden="true">↗</span></a></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><p className="member-welcome" aria-label={`Welcome ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong></p><a className="landing-primary" href={hasAccess ? '/?desk' : tabHref('pricing')}>{hasAccess ? 'Open signal desk' : 'View access plans'} <span aria-hidden="true">↗</span></a><button className="landing-secondary member-signout" type="button" onClick={onSignOut}>Sign out</button></div>
     </header>
     {content}
     <footer className="landing-footer">
