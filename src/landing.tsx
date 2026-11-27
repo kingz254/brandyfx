@@ -89,10 +89,20 @@ const freeBots = [
   { name: 'Signals Under', category: 'Digit Under', description: 'Digit-under signal strategy preset with editable threshold settings.', file: 'signals-under.xml', fxproFile: 'signals under bot.xml' },
 ];
 
+const packageBots: Record<string, { name: string; href: string }[]> = {
+  evenOdd: [{ name: 'bfx-manipulation-evenodd.xml', href: '/bots/bfx-manipulation-evenodd.xml' }],
+  overUnder: [{ name: 'bfx-manipulation-overunder.xml', href: '/bots/bfx-manipulation-overunder.xml' }],
+  matches: [
+    { name: 'bfx-manipulation-evenodd.xml', href: '/bots/bfx-manipulation-evenodd.xml' },
+    { name: 'bfx-manipulation-overunder.xml', href: '/bots/bfx-manipulation-overunder.xml' },
+    { name: 'bfx-manipulation-matches.xml', href: '/bots/bfx-manipulation-matches.xml' },
+  ],
+};
+
 const planCards = [
-  { key: 'evenOdd', title: 'Even / Odd', tier: 'REGULAR ACCESS', name: 'Even / Odd Desk', description: 'Access focused on Even and Odd digit signals.', bot: 'Alternate Even-Odd', highlight: 'Parity signals', vip: false },
-  { key: 'overUnder', title: 'Over 6 / Under 3', tier: 'REGULAR ACCESS', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', bot: 'Turbo O/U', highlight: 'Digit thresholds', vip: false },
-  { key: 'matches', title: 'Matches only', tier: 'PREMIUM · V.I.P ONLY', name: 'Matches V.I.P. Desk', description: 'Exclusive Matches signals with the BrandyFx V.I.P. support circle.', bot: 'Core Bot V3', highlight: 'Matches signals', vip: true },
+  { key: 'evenOdd', title: 'Even / Odd', tier: 'REGULAR ACCESS', name: 'Even / Odd Desk', description: 'Access focused on Even and Odd digit signals.', highlight: 'Parity signals', vip: false },
+  { key: 'overUnder', title: 'Over 6 / Under 3', tier: 'REGULAR ACCESS', name: 'Digit Desk', description: 'Access focused on Over 6 and Under 3 digit signals.', highlight: 'Digit thresholds', vip: false },
+  { key: 'matches', title: 'Matches only', tier: 'PREMIUM · V.I.P ONLY', name: 'Matches V.I.P. Desk', description: 'Exclusive Matches signals with the BrandyFx V.I.P. support circle.', highlight: 'Matches signals', vip: true },
 ] as const;
 
 const steps = [
@@ -272,7 +282,7 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
     <ul className="package-features">
       <li>Live Deriv volatility market context</li>
       <li>{plan.highlight} and signal history</li>
-      <li>One free Pipforge bot: {plan.bot}</li>
+      {packageBots[plan.key].map(bot => <li key={bot.href}>Included bot: <code>{bot.name}</code></li>)}
       <li>Risk reminders and your own trade decisions</li>
       <li>One-time purchase · lifetime access</li>
       {plan.vip && <><li>Private V.I.P. WhatsApp channel</li><li>Priority WhatsApp contact with faster responses</li><li>Educational tips on earning workflows with third-party Deriv apps and partnership information; no earnings are guaranteed</li></>}
@@ -285,16 +295,6 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
 
 type ClientPayment = { id: string; status: string; created: string; revoked_at?: string | null; deleted_at?: string | null; package?: string; amount?: string; currency?: string; reference?: string; customer_name?: string; customer_email?: string; customer_country?: string; rot_number?: string };
 type ClientProfile = { name: string; email: string; country: string; rot_number: string };
-
-const packageBots: Record<string, { name: string; href: string }[]> = {
-  evenOdd: [{ name: 'Even / Odd signal bot', href: '/bots/bfx-manipulation-evenodd.xml' }],
-  overUnder: [{ name: 'Over 6 / Under 3 signal bot', href: '/bots/bfx-manipulation-overunder.xml' }],
-  matches: [
-    { name: 'Even / Odd signal bot', href: '/bots/bfx-manipulation-evenodd.xml' },
-    { name: 'Over 6 / Under 3 signal bot', href: '/bots/bfx-manipulation-overunder.xml' },
-    { name: 'Matches signal bot', href: '/bots/bfx-manipulation-matches.xml' },
-  ],
-};
 
 function VerifiedPurchase({ receipt, settings, packageKey }: { receipt: ReceiptDetails; settings: PublicSettings; packageKey: string }) {
   const bots = packageBots[packageKey] || [];
