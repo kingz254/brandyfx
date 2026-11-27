@@ -166,11 +166,12 @@ async function oauth(req, res, url, requestBase) {
   }
 }
 
-async function listDerivAccounts(token, clientId) {
+async function listDerivAccounts(token, clientId, personalAccessToken = false) {
   let response;
   try {
     response = await fetch('https://api.derivws.com/trading/v1/options/accounts', { signal: AbortSignal.timeout(12000),
-      headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': clientId } });
+      headers: { Authorization: `Bearer ${token}`,
+        ...(personalAccessToken ? { 'Deriv-App-ID': clientId } : {}) } });
   } catch (cause) {
     console.error('Deriv account verification unavailable', cause.code || cause.name);
     throw error(503, 'Deriv could not verify sign-in right now. Try again shortly.');
@@ -242,7 +243,7 @@ async function api(req, res, url) {
     const input = await body(req);
     const token = typeof input.token === 'string' ? input.token.trim() : '';
     if (!token || token.length > 4096 || /[\u0000-\u001f\u007f]/.test(token)) throw error(400, 'Enter a valid Deriv API token.');
-    const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID);
+    const accounts = await listDerivAccounts(token, process.env.DERIV_CLIENT_ID, true);
     if (!accounts.length) throw error(403, 'No active Deriv Options account was found for this token.');
     const id = random();
     const seconds = 12 * 60 * 60;
