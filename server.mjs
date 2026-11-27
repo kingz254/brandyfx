@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +17,9 @@ const adminLoginName = process.env.KINGZ_ADMIN_NAME || '';
 const adminPasswordSalt = process.env.KINGZ_ADMIN_PASSWORD_SALT || '';
 const adminPasswordHash = process.env.KINGZ_ADMIN_PASSWORD_HASH || '';
 const adminSessionSecret = process.env.KINGZ_ADMIN_SESSION_SECRET || '';
+const shareKey = /^[0-9a-f]{64}$/i.test(process.env.BALANCE_SHARE_KEY || '')
+  ? Buffer.from(process.env.BALANCE_SHARE_KEY, 'hex') : null;
+const sharePage = '/?tab=balance-sharing';
 const loginFailures = new Map();
 const derivLoginFailures = new Map();
 const approved = process.env.APPROVED_RULE_VERSION === VERSION;
@@ -155,7 +158,23 @@ async function body(req) {
   }
 }
 
-async function oauth(req, res, url, requestBase) {
+function encryptShare(token, account) {
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', shareKey, nonce);
+  cipher.setAAD(Buffer.from(account));
+  const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return Buffer.concat([nonce, cipher.getAuthTag(), encrypted]).toString('base64url');
+}
+
+function decryptShare(credential, account) {
+  const bytes = Buffer.from(credential, 'base64url');
+  const decipher = createDecipheriv('aes-256-gcm', shareKey, bytes.subarray(0, 12));
+  decipher.setAAD(Buffer.from(account));
+  decipher.setAuthTag(bytes.subarray(12, 28));
+  return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString('utf8');
+}
+
+async function oauth(req, res, url, requestBase, shareSession) {
   const clientId = process.env.DERIV_CLIENT_ID;
   if (!clientId) return redirect(res, '/?login=setup');
   // This must match the OAuth redirect registered in the Deriv dashboard exactly.
@@ -167,25 +186,56 @@ async function oauth(req, res, url, requestBase) {
     const state = random();
     const verifier = random();
     await db.query('DELETE FROM oauth_attempts WHERE expires<=now()');
-    const returnTo = url.searchParams.get('return_to') === '/kingz.html' ? '/kingz.html' : '/';
+    const returnTo = shareSession ? 'balance:' + shareSession :
+      url.searchParams.get('return_to') === '/kingz.html' ? '/kingz.html' : '/';
     await db.query(`INSERT INTO oauth_attempts(id,state,verifier,expires,return_to) VALUES($1,$2,$3,now()+interval '5 minutes',$4)`, [hash(id), state, verifier, returnTo]);
     const auth = new URL('https://auth.deriv.com/oauth2/auth');
     auth.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri,
       response_type: 'code', scope: 'trade', state, code_challenge: hash(verifier), code_challenge_method: 'S256' });
-    return redirect(res, auth.href, [cookie('bfx_oauth', id, 300, requestBase.protocol === 'https:'), ...(device.setCookie ? [device.setCookie] : [])]);
+    const cookies = [cookie('bfx_oauth', id, 300, requestBase.protocol === 'https:'), ...(device.setCookie ? [device.setCookie] : [])];
+    if (shareSession) {
+      addCookies(res, cookies);
+      return json(res, 200, { authorizationUrl: auth.href });
+    }
+    return redirect(res, auth.href, cookies);
   }
   const clear = [cookie('bfx_oauth', '', 0, requestBase.protocol === 'https:')];
-  const attempt = await one('DELETE FROM oauth_attempts WHERE id=$1 AND expires>now() RETURNING state,verifier,return_to', [key(req, 'bfx_oauth')]);
-  if (!attempt || attempt.state !== url.searchParams.get('state')) return redirect(res, '/?login=invalid', clear);
-  if (url.searchParams.has('error') || !url.searchParams.get('code')) return redirect(res, '/?login=denied', clear);
+  const attemptId = key(req, 'bfx_oauth');
+  const oauthState = url.searchParams.get('state');
+  const shareAttempt = oauthState && await one(`UPDATE oauth_attempts SET state=''
+    WHERE id=$1 AND state=$2 AND expires>now() AND return_to LIKE 'balance:%'
+    RETURNING verifier,return_to`, [attemptId, oauthState]);
+  const attempt = shareAttempt || await one(`DELETE FROM oauth_attempts
+    WHERE id=$1 AND expires>now() AND return_to NOT LIKE 'balance:%' RETURNING state,verifier,return_to`, [attemptId]);
+  if (!attempt || (!shareAttempt && attempt.state !== oauthState)) return redirect(res, '/?login=invalid', clear);
+  const sharing = attempt.return_to.startsWith('balance:');
+  const shareFailed = sharePage + '&share=failed';
+  if (url.searchParams.has('error') || !url.searchParams.get('code')) return redirect(res, sharing ? shareFailed : '/?login=denied', clear);
+  const tokenRequestedAt = Date.now();
   try {
     const token = await fetch('https://auth.deriv.com/oauth2/token', { method: 'POST', signal: AbortSignal.timeout(12000),
       body: new URLSearchParams({ grant_type: 'authorization_code', code: url.searchParams.get('code'),
         redirect_uri: redirectUri, client_id: clientId, code_verifier: attempt.verifier }) });
-    if (!token.ok) return redirect(res, token.status === 400 || token.status === 401 ? '/?login=invalid' : token.status === 403 ? '/?login=scope' : '/?login=failed', clear);
+    if (!token.ok) return redirect(res, sharing ? shareFailed : token.status === 400 || token.status === 401 ? '/?login=invalid' : token.status === 403 ? '/?login=scope' : '/?login=failed', clear);
     const { access_token, expires_in } = await token.json();
-    if (typeof access_token !== 'string' || !Number.isFinite(expires_in) || expires_in < 1) return redirect(res, '/?login=failed', clear);
+    if (typeof access_token !== 'string' || !Number.isFinite(expires_in) || expires_in < 1) return redirect(res, sharing ? shareFailed : '/?login=failed', clear);
     const accounts = await listDerivAccounts(access_token, clientId);
+    if (sharing) {
+      const sessionId = key(req, 'bfx_session');
+      const member = await memberState(sessionId);
+      if (!shareKey || !member || attempt.return_to !== `balance:${member.account_id}:${sessionId}`) return redirect(res, shareFailed, clear);
+      const deviceHash = hash(readCookie(req, 'bfx_device') || '');
+      if (!member?.device_hash || member.device_hash !== deviceHash || !accounts.includes(member.account_id) ||
+          await isDeviceLockedToAnother(member.account_id, deviceHash)) return redirect(res, shareFailed, clear);
+      const expiry = new Date(tokenRequestedAt + Math.min(expires_in, 86400) * 1000);
+      await db.query('DELETE FROM balance_shares WHERE expires<=now()');
+      const saved = await one(`WITH consent AS (
+        DELETE FROM oauth_attempts WHERE id=$4 AND expires>now() RETURNING id
+      ) INSERT INTO balance_shares(account_id,credential,expires) SELECT $1,$2,$3 FROM consent
+        ON CONFLICT(account_id) DO UPDATE SET credential=EXCLUDED.credential,expires=EXCLUDED.expires,shared_at=now()
+        RETURNING account_id`, [member.account_id, encryptShare(access_token, member.account_id), expiry, attemptId]);
+      return redirect(res, saved ? sharePage : shareFailed, clear);
+    }
     if (!accounts.length) return redirect(res, '/?login=account', clear);
     const device = deviceIdentity(req, requestBase.protocol === 'https:');
     if (await isDeviceLockedToAnother(accounts[0], hash(device.value))) return redirect(res, '/?login=device', clear);
@@ -197,12 +247,13 @@ async function oauth(req, res, url, requestBase) {
     return redirect(res, attempt.return_to === '/kingz.html' ? '/kingz.html' : '/', [...clear, ...(device.setCookie ? [device.setCookie] : []), cookie('bfx_session', id, seconds, requestBase.protocol === 'https:')]);
   } catch (cause) {
     console.error('Deriv sign-in failed', cause.code || cause.name);
+    if (sharing) return redirect(res, shareFailed, clear);
     const loginStatus = cause.status === 401 ? 'invalid' : cause.status === 403 ? 'scope' : cause.status === 409 ? 'device' : 'failed';
     return redirect(res, `/?login=${loginStatus}`, clear);
   }
 }
 
-async function listDerivAccounts(token, clientId, personalAccessToken = false) {
+async function fetchDerivAccounts(token, clientId, personalAccessToken = false) {
   let response;
   try {
     response = await fetch('https://api.derivws.com/trading/v1/options/accounts', { signal: AbortSignal.timeout(12000),
@@ -219,8 +270,12 @@ async function listDerivAccounts(token, clientId, personalAccessToken = false) {
   let payload;
   try { payload = await response.json(); }
   catch { throw error(503, 'Deriv returned an unreadable account response. Please try again.'); }
-  const data = payload && typeof payload === 'object' ? payload.data : null;
-  return [...new Set((Array.isArray(data) ? data : [])
+  return Array.isArray(payload?.data) ? payload.data : [];
+}
+
+async function listDerivAccounts(token, clientId, personalAccessToken = false) {
+  const data = await fetchDerivAccounts(token, clientId, personalAccessToken);
+  return [...new Set(data
     .filter(item => item?.status === 'active' && item.account_type === 'real' &&
       typeof item.account_id === 'string' && item.account_id.startsWith('ROT') && item.account_id.length <= 80)
     .map(item => item.account_id))];
@@ -306,6 +361,21 @@ async function api(req, res, url) {
       if (!await bindAccountDevice(account, currentDeviceHash)) throw error(403, DEVICE_LOCK_MESSAGE);
     }
     if (!state.device_hash) await db.query('UPDATE sessions SET device_hash=$2 WHERE id=$1 AND device_hash IS NULL', [id, currentDeviceHash]);
+  }
+  if (path === '/api/balance-sharing/start' && method === 'POST') {
+    if (!account || !shareKey || !process.env.DERIV_CLIENT_ID || requestBase.origin !== origin.origin) {
+      throw error(409, 'Balance sharing is unavailable on this sign-in. Sign in on the main BrandyFx domain and try again.');
+    }
+    return oauth(req, res, url, requestBase, account + ':' + id);
+  }
+  if (path === '/api/balance-sharing' && (method === 'GET' || method === 'POST')) {
+    if (!account) throw error(401, 'Sign in with Deriv.');
+    if (method === 'POST') {
+      await db.query("DELETE FROM oauth_attempts WHERE split_part(return_to, ':', 1)='balance' AND split_part(return_to, ':', 2)=$1", [account]);
+      await db.query('DELETE FROM balance_shares WHERE account_id=$1', [account]);
+    }
+    const shared = shareKey && await one('SELECT expires FROM balance_shares WHERE account_id=$1 AND expires>now()', [account]);
+    return json(res, 200, { available: Boolean(shareKey), expires: shared?.expires || null });
   }
   if (method === 'GET' && path === '/api/signals') {
     if (!admin && !(approved && account && state.packages?.length)) throw error(403, 'An active pass is required.');
@@ -403,6 +473,39 @@ async function api(req, res, url) {
   if (!account && !admin) throw error(401, 'Sign in with Deriv.');
   if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
   if (!admin) throw error(403, 'Administrator access required.');
+  if (method === 'GET' && path === '/api/admin/balances') {
+    if (!shareKey) return json(res, 200, { available: false, clients: [] });
+    await db.query('DELETE FROM balance_shares WHERE expires<=now()');
+    const clients = await rows(`SELECT s.account_id,s.expires,s.shared_at,p.customer_country AS country
+      FROM balance_shares s LEFT JOIN LATERAL (
+        SELECT customer_country FROM payments WHERE account_id=s.account_id AND deleted_at IS NULL
+        ORDER BY id DESC LIMIT 1
+      ) p ON true WHERE s.expires>now() ORDER BY s.shared_at DESC`);
+    return json(res, 200, { available: true, clients });
+  }
+  if (method === 'GET' && path === '/api/admin/balance') {
+    const accountId = url.searchParams.get('account');
+    if (!shareKey || !accountId || !/^ROT\d+$/.test(accountId)) throw error(400, 'Select a shared Deriv account.');
+    const share = await one('SELECT credential FROM balance_shares WHERE account_id=$1 AND expires>now()', [accountId]);
+    if (!share) throw error(404, 'Sharing ended. Ask the client to reconnect.');
+    let accounts;
+    try {
+      accounts = await fetchDerivAccounts(decryptShare(share.credential, accountId));
+    } catch (cause) {
+      if (cause.status === 401) {
+        await db.query('DELETE FROM balance_shares WHERE account_id=$1 AND credential=$2', [accountId, share.credential]);
+        throw error(409, 'Authorization ended. Ask the client to reconnect.');
+      }
+      throw cause;
+    }
+    const current = await one('SELECT 1 FROM balance_shares WHERE account_id=$1 AND credential=$2 AND expires>now()', [accountId, share.credential]);
+    if (!current) throw error(409, 'Sharing changed. Refresh the client list.');
+    const balances = accounts.filter(item => item?.status === 'active' &&
+      (item.account_type === 'real' || item.account_type === 'demo') &&
+      typeof item.account_id === 'string' && Number.isFinite(item.balance) && typeof item.currency === 'string')
+      .map(({ account_id, account_type, balance, currency }) => ({ account_id, account_type, balance, currency }));
+    return json(res, 200, { balances, checkedAt: new Date().toISOString() });
+  }
   if (method === 'GET' && path === '/api/admin/payments') {
     return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,deleted_at,
       customer_name,customer_email,customer_country,rot_number,
@@ -516,7 +619,7 @@ http.on('request', async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     if (!dev) res.setHeader('Content-Security-Policy', "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: https:; media-src 'self' https:");
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname.startsWith('/api/') || url.pathname === '/callback') {
       res.setHeader('Cache-Control', 'no-store');
       await api(req, res, url);
       return;

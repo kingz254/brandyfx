@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS device_hash text;
 ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE TABLE IF NOT EXISTS balance_shares (
+  account_id text PRIMARY KEY,
+  credential text NOT NULL,
+  expires timestamptz NOT NULL,
+  shared_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE balance_shares ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE balance_shares FROM anon, authenticated;
 CREATE TABLE IF NOT EXISTS device_locks (
   account_id text PRIMARY KEY,
   device_hash text NOT NULL,

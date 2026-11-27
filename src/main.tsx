@@ -185,6 +185,115 @@ function Access({ member }: { member: Member }) {
   </main>;
 }
 
+type SharingStatus = { available: boolean; expires: string | null };
+type SharedClient = { account_id: string; country: string | null; expires: string; shared_at: string };
+type AccountBalances = {
+  checkedAt: string;
+  balances: { account_id: string; account_type: 'real' | 'demo'; balance: number; currency: string }[];
+};
+
+function BalanceSharing() {
+  const [status, setStatus] = useState<SharingStatus>();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(route.get('share') === 'failed' ? 'Sharing could not be enabled. Try again with the same Deriv account.' : '');
+  useEffect(() => {
+    api<SharingStatus>('balance-sharing').then(setStatus).catch(cause => setMessage(cause.message));
+  }, []);
+  async function authorize() {
+    setBusy(true);
+    setMessage('');
+    try {
+      const { authorizationUrl } = await api<{ authorizationUrl: string }>('balance-sharing/start', {});
+      location.assign(authorizationUrl);
+    } catch (cause) {
+      setMessage((cause as Error).message);
+      setBusy(false);
+    }
+  }
+  async function stopSharing() {
+    setBusy(true);
+    try {
+      setStatus(await api<SharingStatus>('balance-sharing', {}));
+      setMessage('Balance sharing stopped.');
+    } catch (cause) {
+      setMessage((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <section className="tab-page balance-sharing">
+    <header className="tab-heading"><h1>Balance sharing</h1><p>Let BrandyFx view your real and demo Deriv Options account IDs, currencies and balances until the authorization expires. If you supplied a country at checkout, BrandyFx can also see it here.</p></header>
+    <div className="admin-setting-panel balance-sharing-actions">
+      {message && <p role="status">{message}</p>}
+      {status?.expires && <p>Sharing until {dateLabel(status.expires)}. You can stop sharing at any time.</p>}
+      {status?.available && <button type="button" className="landing-primary" onClick={() => void authorize()} disabled={busy}>
+        {status.expires ? 'Renew sharing via Deriv' : 'Share balances via Deriv'}
+      </button>}
+      {status?.expires && <button type="button" className="landing-secondary" onClick={() => void stopSharing()} disabled={busy}>Stop sharing</button>}
+      {status && !status.available && <p>Balance sharing is awaiting setup.</p>}
+    </div>
+  </section>;
+}
+
+function ClientBalanceCard({ client }: { client: SharedClient }) {
+  const [result, setResult] = useState<AccountBalances>();
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  async function refresh() {
+    setBusy(true);
+    setResult(undefined);
+    setMessage('');
+    try {
+      setResult(await api<AccountBalances>('admin/balance?' + new URLSearchParams({ account: client.account_id })));
+    } catch (cause) {
+      setMessage((cause as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <article className="admin-setting-panel balance-sharing-actions">
+    <div className="section-heading"><h2>{client.account_id}</h2><button type="button" className="landing-secondary" onClick={() => void refresh()} disabled={busy}>{busy ? 'Checking…' : 'Refresh balances'}</button></div>
+    <p>{client.country ? 'Checkout country · ' + client.country : 'Country unavailable'}</p>
+    <p>Sharing expires {dateLabel(client.expires)}</p>
+    {message && <p role="alert">{message}</p>}
+    {result && <div aria-live="polite">
+      <p>Checked {dateLabel(result.checkedAt)}</p>
+      {result.balances.length ? <ul className="balance-amounts">{result.balances.map(item => <li key={item.account_id}>
+        <span>{item.account_id} · {item.account_type === 'real' ? 'Real' : 'Demo'}</span>
+        <strong>{item.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 })} {item.currency}</strong>
+      </li>)}</ul> : <p>Deriv returned no active Options balances.</p>}
+    </div>}
+  </article>;
+}
+
+function ClientBalances() {
+  const [data, setData] = useState<{ available: boolean; clients: SharedClient[] }>();
+  const [query, setQuery] = useState('');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(true);
+  async function load() {
+    setBusy(true);
+    setMessage('');
+    setData(undefined);
+    try { setData(await api('admin/balances')); }
+    catch (cause) { setMessage((cause as Error).message); }
+    finally { setBusy(false); }
+  }
+  useEffect(() => { void load(); }, []);
+  const search = query.trim().toLowerCase();
+  const clients = data?.clients.filter(client => [client.account_id, client.country].some(value => value?.toLowerCase().includes(search)));
+  return <main className="site-admin layout">
+    <header className="site-admin-heading"><div><h1>Client balances</h1><p>Deriv Options accounts that clients have chosen to share.</p></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={busy}>{busy ? 'Loading…' : 'Refresh clients'}</button></header>
+    {message && <p role="alert">{message}</p>}
+    {data && !data.available && <p>Set BALANCE_SHARE_KEY on the server to enable balance sharing.</p>}
+    {data?.available && !data.clients.length && <p>No active shares. Clients can opt in from Balance sharing in their account menu.</p>}
+    {!!data?.clients.length && <div className="balance-client-list">
+      <label className="admin-setting-panel balance-sharing-actions">Search by ROT or country<input type="search" value={query} onChange={event => setQuery(event.target.value)} /></label>
+      {clients?.length ? clients.map(client => <ClientBalanceCard key={client.account_id + client.shared_at} client={client}/>) : <p>No clients match your search.</p>}
+    </div>}
+  </main>;
+}
+
 function Admin({ run }: { run: (path: string, data?: object) => Promise<boolean> }) {
   return <main className="admin layout"><h1>Clients</h1>
     <PaymentRecords run={run}/>
@@ -425,11 +534,12 @@ function App() {
   let page: ReactNode;
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin && tab === 'admin') page = <Admin run={run}/>;
+  else if (adminRoute && member.admin && tab === 'balances') page = <ClientBalances/>;
   else if (adminRoute && member.admin && tab === 'desk') page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin />;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
-  else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
+  else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} balanceSharing={route.get('tab') === 'balance-sharing' ? <BalanceSharing/> : undefined} />;
   else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
   else if (member.admin && tab === 'admin') page = <Admin run={run} />;
   else if (member.account) page = <Access member={member} />;
@@ -458,6 +568,7 @@ function App() {
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Clients</button>
+        {adminRoute && <button className="quiet" aria-pressed={tab === 'balances'} onClick={() => setTab('balances')}>Balances</button>}
         <a className="quiet" href="/kingz.html">Site settings</a></>}
       {(member.admin || member.account) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
