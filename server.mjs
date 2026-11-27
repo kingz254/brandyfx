@@ -236,7 +236,7 @@ async function api(req, res, url) {
   }
   if (!db && method === 'GET' && path === '/api/deriv/start') return redirect(res, '/?login=setup');
   if (!db) throw error(503, 'The service is awaiting setup.');
-  if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback'].includes(path)) return oauth(req, res, url, requestBase);
+  if (method === 'GET' && ['/api/deriv/start', '/api/deriv/callback', '/callback'].includes(path)) return oauth(req, res, url, requestBase);
   if (method === 'POST' && path === '/api/deriv/token') {
     if (!process.env.DERIV_CLIENT_ID) throw error(503, 'Deriv sign-in is not configured yet.');
     checkDerivLoginLimit(req);
