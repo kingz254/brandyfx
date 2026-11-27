@@ -361,10 +361,19 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
 
 export default function Landing({ markets, tab, settings, simulated = false, rotNumber, hasAccess = false, onSignOut }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean; rotNumber: string; hasAccess?: boolean; onSignOut: () => void }) {
   const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
+  const [copyStatus, setCopyStatus] = useState('');
   const shownMarkets = markets.slice(0, 5);
   const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
   const currentTab = tabs.some(([id]) => id === tab) || pageTabs.includes(tab) ? tab : 'home';
   const live = shownMarkets.some(market => market.live);
+  async function copyRotNumber() {
+    try {
+      await navigator.clipboard.writeText(rotNumber);
+      setCopyStatus('App ID copied');
+    } catch {
+      setCopyStatus('Copy unavailable');
+    }
+  }
   let content;
 
   if (currentTab === 'home') content = <>
@@ -421,7 +430,7 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
       <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
-      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><p className="member-welcome" aria-label={`Welcome ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong></p><a className="landing-primary" href={hasAccess ? '/?desk' : tabHref('pricing')}>{hasAccess ? 'Open signal desk' : 'View access plans'} <span aria-hidden="true">↗</span></a><button className="landing-secondary member-signout" type="button" onClick={onSignOut}>Sign out</button></div>
+      <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><details className="member-account-menu"><summary className="member-welcome" aria-label={`Account menu for ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong><span className="member-account-caret" aria-hidden="true">⌄</span></summary><div className="member-account-popover"><button type="button" onClick={() => void copyRotNumber()}>{copyStatus || 'Copy app ID'}</button><button type="button" onClick={onSignOut}>Sign out</button></div></details><a className="landing-primary" href="/?desk">Signals <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
     <footer className="landing-footer">
