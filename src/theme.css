@@ -895,8 +895,8 @@ body { color: var(--tone-fff); }
 .purchase-form input:focus { border-color: var(--tone-51e7a3); box-shadow: 0 0 0 3px var(--tone-00c87928); }
 .purchase-form label small { color: rgb(255 255 255 / .65); font: 400 .72rem var(--body); letter-spacing: normal; text-transform: none; }
 .purchase-hash, .purchase-form > .purchase-submit, .purchase-form > .purchase-error, .purchase-config-note { grid-column: 1 / -1; }
-.purchase-submit { display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; min-height: 3.4rem; padding: .75rem 1rem; border: 1px solid var(--tone-51e7a3); border-radius: .55rem; color: var(--tone-04170d); background: linear-gradient(110deg, var(--tone-00c879), var(--tone-51e7a3)); font-weight: 800; text-decoration: none; cursor: pointer; }
-.purchase-submit:disabled { opacity: .55; cursor: not-allowed; }
+.purchase-submit { display: flex; justify-content: space-between; align-items: center; gap: 1rem; width: 100%; min-height: 3.4rem; padding: .75rem 1rem; border: 1px solid var(--tone-51e7a3); border-radius: .55rem; color: #fff; background: linear-gradient(110deg, var(--tone-00c879), var(--tone-51e7a3)); font-weight: 800; text-decoration: none; text-shadow: 0 1px 2px rgb(0 0 0 / .3); cursor: pointer; }
+.purchase-submit:disabled { color: #fff; opacity: .82; cursor: wait; }
 .purchase-config-note, .purchase-error { color: var(--tone-fff); font-size: .78rem; }
 .purchase-error { color: #ffb1a9; }
 .purchase-confirmation { display: grid; gap: .9rem; padding: 1.5rem; }
