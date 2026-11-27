@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 
 export type MarketSample = { symbol: string; name: string; quote: string; updated: string; live: boolean };
 export type PublicSettings = {
@@ -111,7 +112,7 @@ const faqs = [
   ['Which Deriv markets are covered?', 'BrandyFx follows Deriv volatility indices including V10, V25, V50, V75 and V100, subject to live market availability.'],
   ['Which signal families are available?', 'Even / Odd, Over 6 / Under 3 and Matches.'],
   ['Do I need trading experience?', 'Familiarity with Deriv helps. Take time to understand the contract you choose and how its stake and duration affect your risk.'],
-  ['How do I get access?', 'Sign in with Deriv, choose an access plan and follow the TRC20 payment instructions. Your payment reference is reviewed before access is granted.'],
+  ['How do I get access?', 'Sign in with your Deriv real ROT account, choose a package and follow the TRC20 payment instructions. Each package is a one-time lifetime purchase. BrandyFx reviews your payment before unlocking its signal tabs and included bot downloads.'],
 ];
 
 const reviewCountries = [
@@ -258,7 +259,6 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
   const offer = settings[`${plan.key}Offer`];
   const amount = settings.offerActive ? offer : base;
   const discount = settings.offerActive && base > 0 ? Math.max(0, Math.round((base - offer) * 100 / base)) : 0;
-  const days = settings[`${plan.key}Days`];
   return <article className={`package-card${plan.key === 'matches' ? ' premium-package' : ''}`}>
     <span className="package-tag">{plan.tier}</span><h2 className="package-name">{plan.title}</h2>
     {settings.offerActive && <><div className="package-promo"><span>{settings.promoHeading}</span></div><p className="package-promo-sub">{settings.promoSubheading}</p></>}
@@ -274,7 +274,7 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
       <li>{plan.highlight} and signal history</li>
       <li>One free Pipforge bot: {plan.bot}</li>
       <li>Risk reminders and your own trade decisions</li>
-      <li>{days > 0 ? `${days} days of access` : 'Access term set by BrandyFx'}</li>
+      <li>One-time purchase · lifetime access</li>
       {plan.vip && <><li>Private V.I.P. WhatsApp channel</li><li>Priority WhatsApp contact with faster responses</li><li>Educational tips on earning workflows with third-party Deriv apps and partnership information; no earnings are guaranteed</li></>}
     </ul>
     <button className="landing-primary package-action" type="button" onClick={onCheckout}>Pay with USDT <span aria-hidden="true">↗</span></button>
@@ -283,13 +283,35 @@ function PackageCard({ plan, settings, onCheckout }: { plan: (typeof planCards)[
   </article>;
 }
 
-function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[number]; settings: PublicSettings; onClose: () => void }) {
+type ClientPayment = { id: string; status: string; created: string; revoked_at?: string | null; deleted_at?: string | null; package?: string; amount?: string; currency?: string; reference?: string; customer_name?: string; customer_email?: string; customer_country?: string; rot_number?: string };
+type ClientProfile = { name: string; email: string; country: string; rot_number: string };
+
+const packageBots: Record<string, { name: string; href: string }[]> = {
+  evenOdd: [{ name: 'Even / Odd signal bot', href: '/bots/bfx-manipulation-evenodd.xml' }],
+  overUnder: [{ name: 'Over 6 / Under 3 signal bot', href: '/bots/bfx-manipulation-overunder.xml' }],
+  matches: [
+    { name: 'Even / Odd signal bot', href: '/bots/bfx-manipulation-evenodd.xml' },
+    { name: 'Over 6 / Under 3 signal bot', href: '/bots/bfx-manipulation-overunder.xml' },
+    { name: 'Matches signal bot', href: '/bots/bfx-manipulation-matches.xml' },
+  ],
+};
+
+function VerifiedPurchase({ receipt, settings, packageKey }: { receipt: ReceiptDetails; settings: PublicSettings; packageKey: string }) {
+  const bots = packageBots[packageKey] || [];
+  return <section className="purchase-confirmation verified-purchase"><p className="purchase-step">02 · VERIFY</p><h3>Payment verified. Your package is ready.</h3>
+    <p>Thank you for trusting BrandyFx. Your one-time purchase gives lifetime access to <strong>{receipt.package}</strong>. Download the matching Deriv Bot XML files below and use them alongside signals from your package.</p>
+    <ul className="verified-bot-list">{bots.map(bot => <li key={bot.href}><span>{bot.name}</span><a className="landing-secondary" href={bot.href} download>Download XML</a></li>)}</ul>
+    <div className="verified-receipt-actions"><button className="landing-secondary" type="button" onClick={() => downloadReceipt(receipt)}>Download receipt</button>
+      {settings.socialEmail ? <a className="landing-primary" href={receiptMailto(settings.socialEmail, receipt)}>Email BrandyFx to verify ↗</a> : <p className="purchase-error">BrandyFx has not added a support email in site settings yet.</p>}</div>
+    <small>The email button opens your email app with the payment details addressed to BrandyFx. Your receipt includes your package, amount, transaction hash, purchase date and Deriv ROT.</small>
+  </section>;
+}
+
+function PurchaseDialog({ plan, settings, payment, profile, onClose }: { plan: (typeof planCards)[number]; settings: PublicSettings; payment?: ClientPayment; profile?: ClientProfile | null; onClose: () => void }) {
   const base = settings[`${plan.key}Price`];
   const amount = settings.offerActive ? settings[`${plan.key}Offer`] : base;
-  const days = settings[`${plan.key}Days`];
   const checkoutSetup = [
     !settings.trc20Wallet && 'add a TRC20 wallet address',
-    !days && `set an access term for ${plan.title}`,
   ].filter(Boolean);
   const [form, setForm] = useState({ name: '', email: '', country: '', rotNumber: '', transactionHash: '' });
   const [orderId, setOrderId] = useState('');
@@ -311,6 +333,13 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
       url.searchParams.set('text', message);
       return url.toString();
     } catch { return ''; }
+  };
+  const verified = Boolean(orderId && payment?.id === orderId && payment.status === 'approved' && !payment.revoked_at && !payment.deleted_at);
+  const purchaseReceipt: ReceiptDetails = {
+    id: orderId || payment?.id || 'pending', name: profile?.name || form.name, email: profile?.email || form.email,
+    country: profile?.country || form.country, rot: profile?.rot_number || form.rotNumber.toUpperCase(),
+    package: plan.title, amount, currency: 'USDT', reference: payment?.reference || form.transactionHash.toUpperCase(),
+    created: payment?.created || new Date().toISOString(),
   };
   async function copyWallet() {
     try { await navigator.clipboard.writeText(settings.trc20Wallet); setCopied(true); window.setTimeout(() => setCopied(false), 1800); }
@@ -336,7 +365,7 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
   return <div className="purchase-scrim" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="purchase-dialog" role="dialog" aria-modal="true" aria-labelledby="purchase-title">
       <header className="purchase-heading"><div><p className="landing-kicker">PAYMENT · TRC20</p><h2 id="purchase-title">{plan.name} — ${amount.toFixed(2)}</h2></div><button type="button" className="purchase-close" onClick={onClose} aria-label="Close payment window">×</button></header>
-      {orderId ? <div className="purchase-confirmation"><p className="purchase-step">02 · CONFIRM WITH BRANDYFX</p><h3>Your payment details are saved.</h3><p>Reference <strong>{orderId}</strong> is in the admin review list. Send the transaction hash to BrandyFx on WhatsApp to complete your proof.</p>
+      {orderId && verified ? <VerifiedPurchase receipt={purchaseReceipt} settings={settings} packageKey={plan.key} /> : orderId ? <div className="purchase-confirmation"><p className="purchase-step">02 · PAYMENT REVIEW</p><h3>Your payment details are saved.</h3><p>Reference <strong>{orderId}</strong> is in the admin review list. This page will change to the verified purchase and bot downloads as soon as BrandyFx approves your payment.</p>
         {whatsappProof() ? <a className="purchase-submit" href={whatsappProof()} target="_blank" rel="noreferrer">Send proof via WhatsApp <span aria-hidden="true">↗</span></a> : <p className="purchase-error">WhatsApp contact is not configured yet. Add the business WhatsApp link in <a href="/kingz.html">Site settings</a>.</p>}
         <button className="landing-secondary" type="button" onClick={onClose}>Close</button></div> : <>
         <div className="purchase-steps"><span aria-current="step">01 · PAYMENT</span><span>02 · VERIFY</span></div>
@@ -359,11 +388,11 @@ function PurchaseDialog({ plan, settings, onClose }: { plan: (typeof planCards)[
   </div>;
 }
 
-export default function Landing({ markets, tab, settings, simulated = false, rotNumber, hasAccess = false, onSignOut }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean; rotNumber: string; hasAccess?: boolean; onSignOut: () => void }) {
+export default function Landing({ markets, tab, settings, simulated = false, rotNumber, hasAccess = false, onSignOut, payment, profile }: { markets: MarketSample[]; tab: string; settings: PublicSettings; simulated?: boolean; rotNumber: string; hasAccess?: boolean; onSignOut: () => void; payment?: ClientPayment; profile?: ClientProfile | null }) {
   const [purchasePlan, setPurchasePlan] = useState<(typeof planCards)[number] | null>(null);
   const [copyStatus, setCopyStatus] = useState('');
   const shownMarkets = markets.slice(0, 5);
-  const pageTabs = ['refund', 'privacy', 'terms', 'contact'];
+  const pageTabs = ['refund', 'privacy', 'terms', 'contact', 'verify'];
   const currentTab = tabs.some(([id]) => id === tab) || pageTabs.includes(tab) ? tab : 'home';
   const live = shownMarkets.some(market => market.live);
   async function copyRotNumber() {
@@ -423,13 +452,19 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
       {section.contacts && <PolicyContactLinks settings={settings}/>}
     </article>)}</div><aside className="policy-update"><p><strong><img className="policy-inline-mark" src="/brand/brandyfx-app-icon.png" alt=""/> Policy Updates:</strong> BrandyFx reserves the right to update this refund policy at any time. Please check this page regularly for the latest information. Continued use of BrandyFx constitutes acceptance of our current refund policy.</p></aside>
   </section>;
+  else if (currentTab === 'verify') {
+    const verified = payment?.status === 'approved' && !payment.revoked_at && !payment.deleted_at;
+    const packageKey = payment?.package || '';
+    const receipt: ReceiptDetails | null = verified && payment ? { id: payment.id, name: profile?.name || payment.customer_name || '', email: profile?.email || payment.customer_email || '', country: profile?.country || payment.customer_country || '', rot: profile?.rot_number || payment.rot_number || rotNumber, package: planCards.find(plan => plan.key === packageKey)?.title || packageKey, amount: payment.amount || '0', currency: payment.currency || 'USDT', reference: payment.reference || '', created: payment.created } : null;
+    content = <section className="tab-page verification-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Purchase verification</p><h1 id="page-title">Your package<br/>and receipt.</h1></header>{receipt ? <VerifiedPurchase receipt={receipt} settings={settings} packageKey={packageKey} /> : <article className="legal-placeholder"><h2>{payment?.status === 'pending' ? 'Payment is awaiting review.' : 'No verified package yet.'}</h2><p>Once BrandyFx approves a payment linked to your Deriv ROT, this page will show your receipt and the bot files included with that package.</p></article>}</section>;
+  }
   else if (currentTab === 'privacy' || currentTab === 'terms') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">{currentTab === 'privacy' ? <>Privacy<br/>policy.</> : <>Terms of<br/>service.</>}</h1></header><article className="legal-placeholder"><h2>{currentTab === 'privacy' ? 'Privacy policy is being prepared.' : 'Terms of service are being prepared.'}</h2><p>We’ll publish the complete BrandyFx document here before enabling paid access.</p></article></section>;
   else content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Contact</p><h1 id="page-title">Reach<br/>BrandyFx.</h1><p>Use any configured channel to get in touch.</p></header><SocialLinks settings={settings} className="site-social-links-contact"/>{!socialMeta.some(({ key }) => socialHref(settings, key)) && <article className="legal-placeholder"><p>Contact channels will appear here once they are added in site settings.</p></article>}</section>;
 
   return <main className="landing">
     <header className="landing-nav">
       <a className="landing-brand" href={tabHref('home')} aria-label="BrandyFx home"><img src="/brand/brandyfx-app-icon.png" alt="" /><span>BrandyFx</span></a>
-      <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}</nav>
+      <nav className="landing-tabs" aria-label="Main pages">{tabs.map(([id, label]) => <a key={id} href={tabHref(id)} aria-current={currentTab === id ? 'page' : undefined}>{label}</a>)}{payment?.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <a href={tabHref('verify')} aria-current={currentTab === 'verify' ? 'page' : undefined}>Verify</a>}</nav>
       <div className="landing-nav-actions"><SocialLinks settings={settings} className="site-social-links-header"/><details className="member-account-menu"><summary className="member-welcome" aria-label={`Account menu for ${rotNumber}`}><span>Welcome</span><strong title="Your Deriv account ID / ROT number">{rotNumber}</strong><span className="member-account-caret" aria-hidden="true">⌄</span></summary><div className="member-account-popover"><button type="button" onClick={() => void copyRotNumber()}>{copyStatus || 'Copy app ID'}</button><button type="button" onClick={onSignOut}>Sign out</button></div></details><a className="landing-primary" href="/?desk">Signals <span aria-hidden="true">↗</span></a></div>
     </header>
     {content}
@@ -440,6 +475,6 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
       <nav className="footer-link-group" aria-label="Legal"><h2>Legal</h2><a href="/?home&tab=privacy">Privacy policy</a><a href="/?home&tab=terms">Terms of service</a><a href="/?home&tab=refund">Refund policy</a></nav>
       <div className="landing-footer-bottom"><p><strong>Disclaimer:</strong> Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. You may lose some or all of the money you invest. Never trade with borrowed money or money you cannot afford to lose.</p><span>© BrandyFx</span></div>
     </footer>
-    {purchasePlan && <PurchaseDialog plan={purchasePlan} settings={settings} onClose={() => setPurchasePlan(null)} />}
+    {purchasePlan && <PurchaseDialog plan={purchasePlan} settings={settings} payment={payment} profile={profile} onClose={() => setPurchasePlan(null)} />}
   </main>;
 }

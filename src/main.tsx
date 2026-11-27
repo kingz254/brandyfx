@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import Landing, { PublicSettings } from './landing';
+import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 import './theme.css';
 
 type Market = { symbol: string; name: string; quote: string; points: string[]; updated: string; live: boolean };
 type Signal = { id: number; symbol: string; family: string; label: string; digit: number | null; issued: string; expires: string };
 type Offer = { amount: string; currency: string; days: number; instructions: string };
 type Profile = { name: string; email: string; country: string; rot_number: string };
-type Payment = { id: string; status: string; created: string; expires?: string; revoked_at?: string; package?: string; reference?: string; amount?: string; currency?: string };
+type Payment = { id: string; status: string; created: string; expires?: string | null; revoked_at?: string; deleted_at?: string | null; package?: string; reference?: string; amount?: string; currency?: string; customer_name?: string; customer_email?: string; customer_country?: string; rot_number?: string };
 type Order = Payment & { account_id: string; reference: string; amount: string; currency: string; days: number; package: string; customer_name: string; customer_email: string; customer_country: string; rot_number: string };
 type ManagementRequest = { id: string | number; name: string; amount: string; start_date: string; status: string; created: string };
-type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string; payment?: Payment; profile?: Profile | null; offer?: Offer };
+type Member = { ready?: boolean; launched?: boolean; account?: string; admin?: boolean; passUntil?: string | null; lifetimeAccess?: boolean; allowedFamilies?: string[]; payment?: Payment; profile?: Profile | null; offer?: Offer };
 const derivDisclaimer = 'Deriv offers complex derivatives, such as options and contracts for difference (“CFDs”). These products may not be suitable for all clients, and trading them puts you at risk. Please make sure that you understand the following risks before trading Deriv products: a) you may lose some or all of the money you invest in the trade, b) if your trade involves currency conversion, exchange rates will affect your profit and loss. You should never trade with borrowed money or with money that you cannot afford to lose.';
 const families = [['evenOdd', 'Even / Odd'], ['range', 'Over 6 / Under 3'], ['digit', 'Matches']] as const;
 const contractGuides = {
@@ -96,7 +97,7 @@ function Mark() {
   return <img className="mark" src="/brand/brandyfx-app-icon.png" alt="" />;
 }
 
-function Desk({ markets, signals, connected, simulated = false }: { markets: Market[]; signals: Signal[]; connected: boolean; simulated?: boolean }) {
+function Desk({ markets, signals, connected, simulated = false, allowedFamilies, admin }: { markets: Market[]; signals: Signal[]; connected: boolean; simulated?: boolean; allowedFamilies: string[]; admin: boolean }) {
   const [family, setFamily] = useState<keyof typeof contractGuides>('evenOdd');
   const [clock, setClock] = useState(Date.now);
   useEffect(() => {
@@ -104,6 +105,8 @@ function Desk({ markets, signals, connected, simulated = false }: { markets: Mar
     return () => clearInterval(timer);
   }, []);
   const { columns, rules } = contractGuides[family];
+  const canSeeFamily = admin || allowedFamilies.includes(family);
+  useEffect(() => { if (!canSeeFamily && allowedFamilies.length) setFamily(allowedFamilies[0] as keyof typeof contractGuides); }, [canSeeFamily, allowedFamilies]);
   const rankMarket = (symbol: string) => { const index = marketOrder.indexOf(symbol); return index < 0 ? marketOrder.length : index; };
   const orderedMarkets = [...markets].sort((a, b) => rankMarket(a.symbol) - rankMarket(b.symbol));
   const latest = new Map<string, Signal>();
@@ -119,7 +122,8 @@ function Desk({ markets, signals, connected, simulated = false }: { markets: Mar
       <div className="desk-heading"><div><p className="landing-kicker">DERIV · LIVE SIGNAL FEED</p><h1>Signals desk</h1><p>Live setups across the volatility markets.</p></div>
         <span className={simulated ? 'status' : feedLive ? 'status live' : 'status'}>{simulated ? 'Development feed' : preview ? 'Sample feed' : feedLive ? 'Feed live' : 'Waiting for live feed'}</span></div>
       <div className="tabs" role="group" aria-label="Signal family">{families.map(([id, label]) => <button key={id} type="button"
-        aria-pressed={family === id} onClick={() => setFamily(id)}>{label}</button>)}</div>
+        aria-pressed={family === id} aria-disabled={!admin && !allowedFamilies.includes(id)} onClick={() => setFamily(id)}>{label}{!admin && !allowedFamilies.includes(id) ? ' · Locked' : ''}</button>)}</div>
+      {!canSeeFamily ? <section className="contract-guide signal-locked" role="status"><h2>Package access required</h2><p>This signal tab is not included in your approved package. Regular packages show their own signal family; the V.I.P. Matches package includes all three tabs.</p><a className="landing-primary" href="/?home&tab=pricing">View access plans</a></section> : <>
       <section className="contract-guide" aria-label={activeFamily + ' contract guide'}>
         <h2>How {activeFamily} works</h2>
         <p>{rules} Deriv uses the last displayed digit of the final tick, including any trailing zero.</p>
@@ -149,6 +153,7 @@ function Desk({ markets, signals, connected, simulated = false }: { markets: Mar
         {!orderedMarkets.length && <p className="desk-wait" role="status">Waiting for Deriv market data.</p>}
       </div>
       <p className="signal-disclaimer">{simulated ? 'Generated market prices and signals for development testing.' : 'Signals are generated from recent ticks for your own review.'}</p>
+      </>}
     </section>
   </main>;
 }
@@ -156,7 +161,7 @@ function Desk({ markets, signals, connected, simulated = false }: { markets: Mar
 function Access({ member }: { member: Member }) {
   const payment = member.payment;
   const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
-  const status = member.passUntil ? 'Pass active' : payment?.revoked_at ? 'Pass revoked' :
+  const status = member.lifetimeAccess || member.passUntil ? 'Lifetime access active' : payment?.revoked_at ? 'Pass revoked' :
     payment?.status === 'pending' ? 'Payment awaiting review' : payment?.status === 'approved' ? 'Pass expired' :
       payment?.status === 'declined' ? 'Request declined' : 'Deriv connected';
   return <main className="access layout">
@@ -165,57 +170,16 @@ function Access({ member }: { member: Member }) {
       {!member.launched && <><h2>Paid access is opening soon</h2><p>Payment instructions will be available after BrandyFx completes its launch setup.</p></>}
       {member.profile ? <section className="client-profile"><h2>Client details</h2><dl><div><dt>Name</dt><dd>{member.profile.name}</dd></div><div><dt>Email</dt><dd>{member.profile.email}</dd></div><div><dt>Country</dt><dd>{member.profile.country}</dd></div><div><dt>ROT / Deriv number</dt><dd>{member.profile.rot_number}</dd></div></dl></section>
         : <p>No checkout profile is saved to this Deriv account yet.</p>}
-      {payment && <section className="client-payment"><h2>Latest payment</h2><p><strong>{planNames[payment.package || ''] || payment.package}</strong> · {payment.currency} {Number(payment.amount || 0).toFixed(2)}</p><p>Status: {payment.revoked_at ? 'Revoked' : payment.status}</p>{payment.reference && <p>Transaction hash: <code>{payment.reference}</code></p>}</section>}
+      {payment && <section className="client-payment"><h2>Latest payment</h2><p><strong>{planNames[payment.package || ''] || payment.package}</strong> · {payment.currency} {Number(payment.amount || 0).toFixed(2)}</p><p>Status: {payment.deleted_at ? 'Removed' : payment.revoked_at ? 'Revoked' : payment.status}</p>{payment.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <p>Access: one-time lifetime</p>}{payment.reference && <p>Transaction hash: <code>{payment.reference}</code></p>}{payment.status === 'approved' && !payment.revoked_at && !payment.deleted_at && <a className="landing-primary" href="/?home&tab=verify">Open verified purchase</a>}</section>}
       <a className="landing-primary" href="/?home&tab=pricing">Browse access plans <span aria-hidden="true">↗</span></a>
     </section>
   </main>;
 }
 
-function Admin({ member, run }: { member: Member; run: (path: string, data?: object) => Promise<boolean> }) {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loadError, setLoadError] = useState('');
-  async function load() {
-    try {
-      setOrders(await api<Order[]>('admin/payments'));
-      setLoadError('');
-    } catch (cause) {
-      setLoadError((cause as Error).message);
-    }
-  }
-  useEffect(() => { void load(); }, []);
-  async function settings(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const data = Object.fromEntries(new FormData(event.currentTarget));
-    await run('admin/offer', { ...data, days: Number(data.days), currency: String(data.currency).toUpperCase() });
-  }
-  return <main className="admin layout">
-    <h1>Payment review</h1>
-    <section className="access-panel"><h2>Pass offer</h2><form onSubmit={settings}>
-      <div className="offer-fields"><label>Fee<input name="amount" inputMode="decimal" defaultValue={member.offer?.amount} required /></label>
-        <label>Currency<input name="currency" maxLength={3} defaultValue={member.offer?.currency} required /></label>
-        <label>Duration in days<input name="days" type="number" min={1} max={365} defaultValue={member.offer?.days} required /></label></div>
-      <label>Payment instructions<textarea name="instructions" defaultValue={member.offer?.instructions} maxLength={2000} required /></label>
-      <button className="primary">Save offer</button>
-    </form></section>
-    <section className="access-panel"><div className="section-heading"><h2>Requests</h2><button className="quiet" onClick={load}>Refresh</button></div>
-      {loadError && <p role="alert">{loadError}</p>}
-      {!loadError && !orders.length && <p>No payment requests yet.</p>}
-      <ul className="orders">{orders.map(order => <li key={order.id}>
-        <div><strong>{order.reference}</strong><p>{order.account_id} · {order.package} · {order.currency} {order.amount} · {order.days} days</p>
-          <small>{order.revoked_at ? 'Revoked' : order.status}{order.expires ? ' / ' + dateLabel(order.expires) : ''}</small></div>
-        <form onSubmit={async event => {
-          event.preventDefault();
-          const button = (event.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-          if (!button) return;
-          const days = Number(new FormData(event.currentTarget).get('days'));
-          if (await run('admin/payment', { paymentId: order.id, action: button.value, days })) await load();
-        }}>
-          {order.status === 'pending' && <><button className="primary" value="approve">Approve</button><button className="quiet" value="decline">Decline</button></>}
-          {order.status === 'approved' && !order.revoked_at && <><label>Days to add<input name="days" type="number" min={1} max={365} defaultValue={1} required /></label>
-            <button className="quiet" value="extend">Extend</button><button className="quiet" value="revoke" formNoValidate>Revoke</button></>}
-        </form>
-      </li>)}</ul>
-    </section>
+function Admin({ run }: { run: (path: string, data?: object) => Promise<boolean> }) {
+  return <main className="admin layout"><h1>Clients</h1>
+    <PaymentRecords run={run}/>
+    <ManagementRequests />
   </main>;
 }
 
@@ -228,7 +192,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
     <form className="site-settings-form" onSubmit={async event => {
       event.preventDefault(); setBusy(true); setSaved(''); setError('');
       const raw = Object.fromEntries(new FormData(event.currentTarget));
-      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), evenOddPrice: Number(raw.evenOddPrice), evenOddOffer: Number(raw.evenOddOffer), evenOddDays: Number(raw.evenOddDays), overUnderPrice: Number(raw.overUnderPrice), overUnderOffer: Number(raw.overUnderOffer), overUnderDays: Number(raw.overUnderDays), matchesPrice: Number(raw.matchesPrice), matchesOffer: Number(raw.matchesOffer), matchesDays: Number(raw.matchesDays), offerEnabled: raw.offerEnabled === 'on' };
+      const payload = { ...raw, offerEndsAt: raw.offerEndsAt ? new Date(String(raw.offerEndsAt)).toISOString() : '', videoOpacity: Number(raw.videoOpacity), glassOpacity: Number(raw.glassOpacity), evenOddPrice: Number(raw.evenOddPrice), evenOddOffer: Number(raw.evenOddOffer), evenOddDays: 0, overUnderPrice: Number(raw.overUnderPrice), overUnderOffer: Number(raw.overUnderOffer), overUnderDays: 0, matchesPrice: Number(raw.matchesPrice), matchesOffer: Number(raw.matchesOffer), matchesDays: 0, offerEnabled: raw.offerEnabled === 'on' };
       try { const result = await api<PublicSettings>('admin/site-settings', payload); onSaved(result); setSaved('Settings saved.'); }
       catch (cause) { setError((cause as Error).message); }
       finally { setBusy(false); }
@@ -238,7 +202,7 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
         <div className="admin-field-grid"><label>Video opacity <output>{Math.round(settings.videoOpacity * 100)}%</output><input name="videoOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.videoOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label>
           <label>Glass opacity <output>{Math.round(settings.glassOpacity * 100)}%</output><input name="glassOpacity" type="range" min="0.1" max="0.9" step="0.01" defaultValue={settings.glassOpacity} onInput={e => { const output = (e.currentTarget.previousElementSibling as HTMLOutputElement); if (output) output.value = `${Math.round(Number(e.currentTarget.value) * 100)}%`; }}/></label></div>
       </section>
-      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing & terms</h2><div className="admin-plan-grid">{([{ key: 'evenOdd', label: 'Even / Odd' }, { key: 'overUnder', label: 'Over 6 / Under 3' }, { key: 'matches', label: 'Matches only' }] as const).map(({ key, label }) => <fieldset key={key}><legend>{label}</legend><label>Standard price (USD)<input name={`${key}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Price`]} required/></label><label>Offer price (USD)<input name={`${key}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Offer`]} required/></label><label>Access days<input name={`${key}Days`} type="number" min="0" max="365" defaultValue={settings[`${key}Days`]} required/><small>Set 0 to leave the term unset until launch.</small></label></fieldset>)}</div>
+      <section className="admin-setting-panel"><p className="landing-kicker">Access plans</p><h2>Pricing</h2><p className="admin-panel-note">Every package is a one-time purchase for lifetime access. No recurring billing or expiry term.</p><div className="admin-plan-grid">{([{ key: 'evenOdd', label: 'Even / Odd' }, { key: 'overUnder', label: 'Over 6 / Under 3' }, { key: 'matches', label: 'Matches only · V.I.P.' }] as const).map(({ key, label }) => <fieldset key={key}><legend>{label}</legend><label>Standard price (USD)<input name={`${key}Price`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Price`]} required/></label><label>Offer price (USD)<input name={`${key}Offer`} type="number" min="1" step="0.01" defaultValue={settings[`${key}Offer`]} required/></label></fieldset>)}</div>
         <label className="admin-check"><input name="offerEnabled" type="checkbox" defaultChecked={settings.offerActive}/> Enable launch offer</label>
         <div className="admin-field-grid"><label>Offer end date/time<input name="offerEndsAt" type="datetime-local" defaultValue={settings.offerEndsAt ? new Date(settings.offerEndsAt).toISOString().slice(0, 16) : ''}/></label><label>Promotion heading<input name="promoHeading" maxLength={90} defaultValue={settings.promoHeading} required/></label></div>
         <label>Promotion subheading<input name="promoSubheading" maxLength={140} defaultValue={settings.promoSubheading} required/></label>
@@ -252,7 +216,6 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
       {(error || saved) && <p className={error ? 'admin-message error' : 'admin-message'} role={error ? 'alert' : 'status'}>{error || saved}</p>}
       <div className="site-admin-actions"><button className="landing-primary" disabled={busy}>{busy ? 'Saving…' : 'Save site settings'}</button><button type="button" className="landing-secondary" onClick={() => void run('logout')}>Sign out</button></div>
     </form>
-    <PaymentRecords run={run} />
     <ManagementRequests />
   </main>;
 }
@@ -261,6 +224,7 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState('all');
   const load = async () => {
     setLoading(true);
     try { setOrders(await api<Order[]>('admin/payments')); setLoadError(''); }
@@ -268,17 +232,26 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
     finally { setLoading(false); }
   };
   useEffect(() => { void load(); }, []);
-  const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches only · V.I.P.' };
-  return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client orders</p><h2>Payment records</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
-    <p className="admin-panel-note">Verify each TRC20 transaction hash before approving access. The selected package determines its term and signal entitlement.</p>
+  const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches · V.I.P.' };
+  const filters = [['all','All clients'],['evenOdd','Even / Odd'],['overUnder','Over / Under'],['matches','Matches · V.I.P.']] as const;
+  const visibleOrders = selectedPackage === 'all' ? orders : orders.filter(order => order.package === selectedPackage);
+  const receipt = (order: Order): ReceiptDetails => ({ id: String(order.id), name: order.customer_name, email: order.customer_email, country: order.customer_country, rot: order.rot_number || order.account_id, package: planNames[order.package] || order.package, amount: order.amount, currency: order.currency, reference: order.reference, created: order.created });
+  return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client records</p><h2>Clients</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
+    <p className="admin-panel-note">Verify each TRC20 transaction hash before approving. Approval grants that package for the lifetime of the BrandyFx service. Matches V.I.P. includes all three signal tabs.</p>
+    <div className="client-package-filters" role="group" aria-label="Filter clients by package">{filters.map(([key,label]) => <button key={key} type="button" aria-pressed={selectedPackage === key} onClick={() => setSelectedPackage(key)}>{label}<small>{key === 'all' ? orders.length : orders.filter(order => order.package === key).length}</small></button>)}</div>
     {loadError && <p className="admin-message error" role="alert">{loadError}</p>}
     {!loadError && !orders.length && <p>No payment records yet.</p>}
-    {!!orders.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Deriv / ROT</th><th>Package</th><th>Paid</th><th>Transaction hash</th><th>Status</th><th>Review</th></tr></thead>
-      <tbody>{orders.map(order => <tr key={order.id}><td><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
-        <td>{order.rot_number || order.account_id}</td><td>{planNames[order.package] || order.package}<small>{order.days} days</small></td><td>{order.currency} {Number(order.amount).toFixed(2)}</td>
-        <td><code>{order.reference}</code></td><td><span className={`record-status record-${order.revoked_at ? 'revoked' : order.status}`}>{order.revoked_at ? 'Revoked' : order.status}</span></td>
-        <td>{order.status === 'pending' ? <div className="record-actions"><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></div> : <small>{order.expires ? `Until ${dateLabel(order.expires)}` : order.status}</small>}</td>
+    {!!visibleOrders.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Deriv / ROT</th><th>Package</th><th>Paid</th><th>Transaction hash</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>{visibleOrders.map(order => <tr key={order.id}><td><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
+        <td>{order.rot_number || order.account_id}</td><td>{planNames[order.package] || order.package}<small>One-time · lifetime</small></td><td>{order.currency} {Number(order.amount).toFixed(2)}</td>
+        <td><code>{order.reference}</code></td><td><span className={`record-status record-${order.deleted_at ? 'deleted' : order.revoked_at ? 'revoked' : order.status}`}>{order.deleted_at ? 'Deleted' : order.revoked_at ? 'Revoked' : order.status}</span></td>
+        <td><div className="record-actions">{order.status === 'pending' && !order.deleted_at && <><button type="button" className="landing-primary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'approve' })) void load(); }}>Approve · lifetime</button><button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'decline' })) void load(); }}>Decline</button></>}
+          {order.status === 'approved' && !order.revoked_at && !order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (await run('admin/payment', { paymentId: order.id, action: 'revoke' })) void load(); }}>Revoke access</button>}
+          {order.status === 'approved' && <><button type="button" className="landing-secondary" onClick={() => downloadReceipt(receipt(order))}>Download receipt</button>{order.customer_email && <a className="landing-secondary" href={receiptMailto(order.customer_email, receipt(order))}>Email receipt</a>}</>}
+          {!order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Remove ${order.customer_name || order.account_id}'s record and revoke access?`)) { if (await run('admin/payment', { paymentId: order.id, action: 'delete' })) void load(); } }}>Delete record</button>}
+          {order.deleted_at && <small>Access revoked</small>}</div></td>
       </tr>)}</tbody></table></div>}
+    {!loadError && orders.length > 0 && !visibleOrders.length && <p>No records for this package.</p>}
   </section>;
 }
 
@@ -336,7 +309,8 @@ function App() {
   const [tokenDialog, setTokenDialog] = useState(false);
   const [tokenValue, setTokenValue] = useState('');
   const [notice, setNotice] = useState(loginMessage[new URLSearchParams(location.search).get('login') || ''] || '');
-  const canView = Boolean(member.account && (member.admin || (member.launched && member.passUntil)));
+  const allowedFamilies = member.allowedFamilies || [];
+  const canView = Boolean(member.account && (member.admin || (member.launched && allowedFamilies.length > 0)));
   useEffect(() => {
     if (!DEVELOPMENT_SIGNAL_SIMULATION || adminRoute || !canView || tab !== 'desk') return;
     setSignals([]);
@@ -405,7 +379,7 @@ function App() {
     }
     void poll();
     return () => { active = false; clearTimeout(timer); setSignals([]); setConnected(false); };
-  }, [canView, tab, member.account]);
+  }, [canView, tab, member.account, allowedFamilies.join(',')]);
   async function run(path: string, data = {}) {
     if (pending) return false;
     setPending(true);
@@ -435,12 +409,13 @@ function App() {
   const showingDesk = preview || (canView && route.has('desk'));
   let page: ReactNode;
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
+  else if (adminRoute && member.admin && tab === 'admin') page = <Admin run={run}/>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
-  else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} />;
-  else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} />;
-  else if (member.admin && tab === 'admin') page = <Admin member={member} run={run} />;
+  else if (privateHome) page = <Landing markets={markets} tab={route.get('tab') || 'home'} settings={settings} simulated={DEVELOPMENT_SIGNAL_SIMULATION} rotNumber={member.account!} hasAccess={canView} onSignOut={() => void run('logout')} payment={member.payment} profile={member.profile} />;
+  else if (showingDesk) page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : preview ? fixtureSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || preview || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin={Boolean(member.admin || preview)} />;
+  else if (member.admin && tab === 'admin') page = <Admin run={run} />;
   else if (member.account) page = <Access member={member} />;
   else page = <main className="login-page">
     <a className="login-brand" href="/" aria-label="BrandyFx home">
@@ -461,17 +436,17 @@ function App() {
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
   {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
-  {privateHome ? page : <>{showingDesk || member.account ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
+  {privateHome ? page : <>{showingDesk || member.account || member.admin ? <header className="top"><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
-        <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Payments</button>
+        <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Clients</button>
         <a className="quiet" href="/kingz.html">Site settings</a></>}
       {(member.admin || member.account) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>
   </header> : null}
     {notice && <p className={showingDesk ? 'notice layout' : 'notice login-notice'} role="alert">{notice}</p>}{page}
-    {showingDesk || member.account ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
+    {showingDesk || member.account || member.admin ? <footer className="layout"><span className="footer-brand"><Mark />BrandyFx</span><span>{DEVELOPMENT_SIGNAL_SIMULATION ? 'Development market data' : preview ? 'Design preview with sample data' : 'Signals for Deriv Options'}</span></footer> :
       <footer className="risk-footer"><p id="terms"><strong>Disclaimer:</strong> {derivDisclaimer}</p></footer>}
     </>}
     {tokenDialog && <div className="dialog-scrim" onMouseDown={event => { if (event.target === event.currentTarget && !pending) { setTokenDialog(false); setTokenValue(''); } }}>

@@ -35,8 +35,11 @@ CREATE TABLE IF NOT EXISTS payments (
   created timestamptz NOT NULL DEFAULT now(),
   amount numeric(12,2) NOT NULL, currency text NOT NULL, days integer NOT NULL,
   package text NOT NULL DEFAULT 'evenOdd' CHECK(package IN ('regular','premium','evenOdd','overUnder','matches')),
-  reviewed_by text, reviewed_at timestamptz, expires timestamptz, revoked_at timestamptz
+  reviewed_by text, reviewed_at timestamptz, expires timestamptz, revoked_at timestamptz, deleted_at timestamptz
 );
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
+ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_days_check;
+ALTER TABLE payments ADD CONSTRAINT payments_days_check CHECK (days >= 0);
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS package text NOT NULL DEFAULT 'regular';
 ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_package_check;
 UPDATE payments SET package='evenOdd' WHERE package='riseFall';
@@ -48,7 +51,8 @@ ALTER TABLE payments ADD COLUMN IF NOT EXISTS customer_country text NOT NULL DEF
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS rot_number text NOT NULL DEFAULT '';
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS payments_member ON payments(account_id, id DESC);
-CREATE UNIQUE INDEX IF NOT EXISTS payments_one_pending ON payments(account_id) WHERE status='pending';
+DROP INDEX IF EXISTS payments_one_pending;
+CREATE UNIQUE INDEX payments_one_pending ON payments(account_id) WHERE status='pending' AND deleted_at IS NULL;
 CREATE TABLE IF NOT EXISTS account_management_requests (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 100),

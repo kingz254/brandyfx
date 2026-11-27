@@ -91,14 +91,18 @@ async function siteSettings() {
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
 const memberState = id => one(`SELECT real_account.account_id,s.expires,
-  (SELECT max(expires) FROM payments WHERE account_id=real_account.account_id AND status='approved'
-    AND revoked_at IS NULL AND expires>now()) AS pass_until
+  coalesce(array_agg(DISTINCT p.package) FILTER (WHERE p.id IS NOT NULL), ARRAY[]::text[]) AS packages,
+  coalesce(bool_or(p.expires IS NULL), false) AS lifetime_access,
+  max(p.expires) FILTER (WHERE p.expires>now()) AS pass_until
   FROM sessions s CROSS JOIN LATERAL (SELECT COALESCE(
     CASE WHEN s.account_id LIKE 'ROT%' THEN s.account_id END,
     (SELECT stored.account_id FROM unnest(s.accounts) AS stored(account_id)
       WHERE stored.account_id LIKE 'ROT%' ORDER BY stored.account_id LIMIT 1)
   ) AS account_id) AS real_account
-  WHERE s.id=$1 AND s.expires>now()`, [id]);
+  LEFT JOIN payments p ON p.account_id=real_account.account_id AND p.status='approved'
+    AND p.revoked_at IS NULL AND p.deleted_at IS NULL AND (p.expires IS NULL OR p.expires>now())
+  WHERE s.id=$1 AND s.expires>now()
+  GROUP BY real_account.account_id,s.expires`, [id]);
 
 async function body(req) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw error(415, 'Expected JSON.');
@@ -264,25 +268,41 @@ async function api(req, res, url) {
   const account = state?.account_id;
   const admin = adminIds.has(account) || passwordAdmin;
   if (method === 'GET' && path === '/api/signals') {
-    if (!admin && !(approved && account && state.pass_until)) throw error(403, 'An active pass is required.');
+    if (!admin && !(approved && account && state.packages?.length)) throw error(403, 'An active pass is required.');
+    const requestedFamily = url.searchParams.get('family');
+    if (requestedFamily && !['evenOdd','range','digit'].includes(requestedFamily)) throw error(400, 'Choose a valid signal family.');
+    if (!admin && requestedFamily) {
+      const packages = state.packages || [];
+      const allowed = requestedFamily === 'evenOdd' ? packages.some(p => ['evenOdd','regular','matches','premium'].includes(p))
+        : requestedFamily === 'range' ? packages.some(p => ['overUnder','regular','matches','premium'].includes(p))
+          : packages.some(p => ['matches','premium'].includes(p));
+      if (!allowed) throw error(403, 'This signal tab is not included in your approved package.');
+    }
     const signals = await rows(`SELECT id,symbol,family,label,digit,issued,expires FROM signals
-      WHERE version=$1 AND expires>now() AND ($2 OR EXISTS (
+      WHERE version=$1 AND expires>now() AND ($4::text IS NULL OR family=$4) AND ($2 OR EXISTS (
         SELECT FROM payments p WHERE p.account_id=$3 AND p.status='approved'
-          AND p.revoked_at IS NULL AND p.expires>now()
-          AND ((signals.family='evenOdd' AND p.package IN ('evenOdd','regular'))
-            OR (signals.family='range' AND p.package IN ('overUnder','regular'))
+          AND p.revoked_at IS NULL AND p.deleted_at IS NULL AND (p.expires IS NULL OR p.expires>now())
+          AND ((signals.family='evenOdd' AND p.package IN ('evenOdd','regular','matches','premium'))
+            OR (signals.family='range' AND p.package IN ('overUnder','regular','matches','premium'))
             OR (signals.family='digit' AND p.package IN ('matches','premium')))
-      )) ORDER BY issued DESC,id DESC`, [VERSION, admin, account ?? null]);
+      )) ORDER BY issued DESC,id DESC`, [VERSION, admin, account ?? null, requestedFamily]);
     return json(res, 200, signals);
   }
 
   if (method === 'GET' && path === '/api/me') {
-    const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,package,reference,amount,currency FROM payments
-      WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
+    const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,deleted_at,package,reference,amount,currency,customer_name,customer_email,customer_country,rot_number FROM payments
+      WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`, [account]) : null;
     const profile = account ? await one(`SELECT customer_name AS name,customer_email AS email,customer_country AS country,rot_number
-      FROM payments WHERE account_id=$1 ORDER BY id DESC LIMIT 1`, [account]) : null;
+      FROM payments WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`, [account]) : null;
+    const packages = state?.packages || [];
+    const allowedFamilies = admin ? ['evenOdd','range','digit'] : [
+      ...(packages.some(p => ['evenOdd','regular','matches','premium'].includes(p)) ? ['evenOdd'] : []),
+      ...(packages.some(p => ['overUnder','regular','matches','premium'].includes(p)) ? ['range'] : []),
+      ...(packages.some(p => ['matches','premium'].includes(p)) ? ['digit'] : []),
+    ];
     return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, admin,
-      passUntil: state?.pass_until, payment, profile, offer: account ? await offer() : null });
+      passUntil: state?.lifetime_access ? null : state?.pass_until, lifetimeAccess: Boolean(state?.lifetime_access),
+      allowedFamilies, payment, profile, offer: account ? await offer() : null });
   }
   if (method === 'POST' && path === '/api/logout') {
     if (db) await db.query('DELETE FROM sessions WHERE id=$1', [id]);
@@ -291,6 +311,7 @@ async function api(req, res, url) {
   }
   if (method === 'POST' && path === '/api/payment') {
     if (!approved) throw error(409, 'Paid access is awaiting launch.');
+    if (!account) throw error(401, 'Sign in with your Deriv real ROT account before submitting payment details.');
     const input = await body(req);
     const { package: tier, name, email, country, rotNumber } = input;
     const reference = input.transactionHash;
@@ -299,17 +320,17 @@ async function api(req, res, url) {
     if (typeof name !== 'string' || !name.trim() || name.trim().length > 100 || typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()) ||
       typeof country !== 'string' || !country.trim() || country.trim().length > 90 || typeof rotNumber !== 'string' || !/^[A-Za-z0-9-]{3,40}$/.test(rotNumber.trim())) throw error(400, 'Enter your name, a valid email, country and Deriv ROT number.');
     const rot = rotNumber.trim().toUpperCase();
-    if (account && rot !== account) throw error(400, 'Use the Deriv account number that is signed in.');
+    if (rot !== account) throw error(400, 'Use the Deriv account number that is signed in.');
     const result = await one(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
           THEN CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
           ELSE CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddPrice')::numeric WHEN 'overUnder' THEN (settings->>'overUnderPrice')::numeric ELSE (settings->>'matchesPrice')::numeric END END AS amount,
-        CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddDays')::integer WHEN 'overUnder' THEN (settings->>'overUnderDays')::integer ELSE (settings->>'matchesDays')::integer END AS days FROM settings)
+        0 AS days FROM settings)
       INSERT INTO payments(account_id,reference,amount,currency,days,package,customer_name,customer_email,customer_country,rot_number)
-      SELECT $1,$2,amount,'USDT',days,$3,$4,$5,$6,$1 FROM plan WHERE days BETWEEN 1 AND 365 AND NOT EXISTS(
-        SELECT 1 FROM payments WHERE account_id=$1 AND status='pending')
+      SELECT $1,$2,amount,'USDT',days,$3,$4,$5,$6,$1 FROM plan WHERE NOT EXISTS(
+        SELECT 1 FROM payments WHERE account_id=$1 AND status='pending' AND deleted_at IS NULL)
       ON CONFLICT DO NOTHING RETURNING id`, [rot, reference.trim().toUpperCase(), tier, name.trim(), email.trim().toLowerCase(), country.trim()]);
-    if (!result) throw error(409, 'This hash is already recorded, a payment is pending for this Deriv account, or the access term needs setup.');
+    if (!result) throw error(409, 'This hash is already recorded or a payment is pending for this Deriv account.');
     return json(res, 201, result);
   }
   if (method === 'POST' && path === '/api/account-management') {
@@ -329,9 +350,9 @@ async function api(req, res, url) {
   if (!path.startsWith('/api/admin/')) throw error(404, 'Page unavailable.');
   if (!admin) throw error(403, 'Administrator access required.');
   if (method === 'GET' && path === '/api/admin/payments') {
-    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,
+    return json(res, 200, await rows(`SELECT id,account_id,reference,status,amount,currency,days,package,created,expires,revoked_at,deleted_at,
       customer_name,customer_email,customer_country,rot_number
-      FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 100`));
+      FROM payments ORDER BY (status='pending') DESC,id DESC LIMIT 300`));
   }
   if (method === 'GET' && path === '/api/admin/account-management') {
     return json(res, 200, await rows(`SELECT id,name,amount,start_date,status,created
@@ -383,15 +404,14 @@ async function api(req, res, url) {
     const { paymentId, action, days } = await body(req);
     if (typeof paymentId !== 'string' || !/^\d{1,18}$/.test(paymentId)) throw error(400, 'Invalid payment.');
     const operations = {
-      approve: "SET status='approved',reviewed_by=$2,reviewed_at=now(),expires=now()+days*interval '1 day' WHERE id=$1 AND status='pending'",
+      approve: "SET status='approved',reviewed_by=$2,reviewed_at=now(),days=0,expires=NULL WHERE id=$1 AND status='pending' AND deleted_at IS NULL",
       decline: "SET status='declined',reviewed_by=$2,reviewed_at=now() WHERE id=$1 AND status='pending'",
       revoke: "SET revoked_at=now() WHERE id=$1 AND status='approved' AND revoked_at IS NULL AND $2::text IS NOT NULL",
-      extend: "SET expires=greatest(expires,now())+$3*interval '1 day' WHERE id=$1 AND status='approved' AND revoked_at IS NULL AND $2::text IS NOT NULL",
+      delete: "SET deleted_at=now(),revoked_at=coalesce(revoked_at,now()) WHERE id=$1 AND deleted_at IS NULL",
     };
     if (typeof action !== 'string' || !Object.hasOwn(operations, action)) throw error(400, 'Invalid action.');
-    if (action === 'extend' && (!Number.isInteger(days) || days < 1 || days > 365)) throw error(400, 'Enter an extension of 1 to 365 days.');
     const adminActor = account || (passwordAdmin ? 'password-admin' : null);
-    const args = action === 'extend' ? [paymentId, adminActor, days, action] : [paymentId, adminActor, action];
+    const args = [paymentId, adminActor, action];
     const changed = await one(`WITH changed AS (UPDATE payments ${operations[action]} RETURNING id,expires)
       INSERT INTO pass_audit(payment_id,actor,action,expires) SELECT id,$2,$${args.length},expires FROM changed RETURNING payment_id`, args);
     if (!changed && action === 'approve' && await one("SELECT id FROM payments WHERE id=$1 AND status='approved'", [paymentId])) return json(res, 200, {});
