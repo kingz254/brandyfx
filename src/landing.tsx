@@ -3,6 +3,8 @@ import type { FormEvent } from 'react';
 import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 
 export type MarketSample = { symbol: string; name: string; quote: string; updated: string; live: boolean };
+export type ReviewEntry = { id: string; text: string; name: string; country: string; countryCode: string; package: string; source: 'sample' | 'client' };
+export const reviewPackages = ['Even / Odd · Regular', 'Over 6 / Under 3 · Regular', 'Matches · V.I.P.'] as const;
 export type PublicSettings = {
   backgroundUrl: string;
   videoOpacity: number;
@@ -31,6 +33,8 @@ export type PublicSettings = {
   socialWhatsApp: string;
   socialTelegram: string;
   socialInstagram: string;
+  homepageReviews?: ReviewEntry[];
+  communityReviews?: ReviewEntry[];
 };
 
 const tabs = [
@@ -191,42 +195,56 @@ const homeReviewSamples = [
   { text: 'It is convenient to have the Matches signals and included bot downloads grouped together.', package: 'Matches · V.I.P.' },
 ] as const;
 
-function HomeReviewPreview() {
+export const defaultReviewSets = {
+  homepage: homeReviewSamples.map((review, index): ReviewEntry => {
+    const person = sampleReview(index, index);
+    return { id: `home-${index + 1}`, ...person, ...review, source: 'sample' };
+  }),
+  community: Array.from({ length: 10 }, (_, index): ReviewEntry => {
+    const person = sampleReview(0, index);
+    return { id: `community-${index + 1}`, ...person, package: reviewPackages[index % reviewPackages.length], source: 'sample' };
+  }),
+};
+
+function HomeReviewPreview({ reviews }: { reviews: ReviewEntry[] }) {
   const [index, setIndex] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => setIndex(value => (value + 1) % homeReviewSamples.length), 5200);
+    if (!reviews.length) return;
+    const timer = window.setInterval(() => setIndex(value => (value + 1) % reviews.length), 5200);
     return () => clearInterval(timer);
-  }, []);
-  const person = sampleReview(index, index);
-  const review = homeReviewSamples[index];
+  }, [reviews.length]);
+  const review = reviews.length ? reviews[index % reviews.length] : null;
   return <section className="landing-feed home-review-preview" aria-label="Generated illustrative review preview">
-    <div className="landing-feed-head"><h2>Review preview</h2><span className="feed-status"><i aria-hidden="true" />Illustrative samples</span></div>
-    <p className="home-review-disclosure">Generated examples only — these are not reviews from real customers.</p>
+    <div className="landing-feed-head"><h2>Review preview</h2><span className="feed-status"><i aria-hidden="true" />{review?.source === 'client' ? 'Client review' : review ? 'Illustrative sample' : 'No reviews'}</span></div>
+    <p className="home-review-disclosure">Illustrative samples are labelled. Client reviews are shared with permission.</p>
     <div className="home-review-stage" aria-live="off">
-      <article className={`home-review-slide review-v${(index % 10) + 1}`} key={index}>
+      {review ? <article className={`home-review-slide review-v${(index % 10) + 1}`} key={review.id}>
         <span className="review-quote-mark" aria-hidden="true">“</span>
         <p className="home-review-copy">{review.text}</p>
-        <div className="home-review-person"><span className="review-flag"><img src={`https://flagcdn.com/w40/${person.countryCode}.png`} alt={`Flag of ${person.country}`} loading="lazy" referrerPolicy="no-referrer" /></span><span className="home-review-identity"><b>{person.name}</b><small>{person.country}</small></span><span className="home-review-package">{review.package}</span></div>
-      </article>
+        <div className="home-review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span className="home-review-identity"><b>{review.name}</b><small>{review.country}</small></span><span className="home-review-package">{review.package}</span><small className="home-review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></div>
+      </article> : <p className="feed-empty">No reviews have been added to the homepage rotation yet.</p>}
     </div>
   </section>;
 }
 
-function ReviewCarousel() {
+function ReviewCarousel({ reviews }: { reviews: ReviewEntry[] }) {
   const [round, setRound] = useState(0);
   useEffect(() => {
     const timer = window.setInterval(() => setRound(value => value + 1), 7200);
     return () => clearInterval(timer);
   }, []);
-  const reviews = Array.from({ length: 10 }, (_, index) => sampleReview(round, index));
+  const visibleCount = Math.min(10, reviews.length);
+  const offset = reviews.length ? (round * visibleCount) % reviews.length : 0;
+  const visibleReviews = Array.from({ length: visibleCount }, (_, index) => reviews[(offset + index) % reviews.length]);
   return <>
-    <p className="review-disclosure">Illustrative samples only. These names and statements are generated examples, not reviews from real customers.</p>
+    <p className="review-disclosure">Illustrative examples are labelled. Client reviews are shown with permission.</p>
     <div className="review-wall" aria-live="off">
-      {reviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.countryCode}-${index}`}>
+      {visibleReviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.id}`}>
         <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span></div>
         <p className="review-copy">{review.text}</p>
-        <div className="review-person"><span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.countryCode === 'es' && review.country.startsWith('Canary') ? 'Spain, for the Canary Islands' : review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span><span><b>{review.name}</b><small>{review.country}</small></span></div>
+        <div className="review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span><b>{review.name}</b><small>{review.country}</small><small className="review-package">{review.package}</small><small className="review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></span></div>
       </article>)}
+      {!visibleReviews.length && <p className="review-disclosure">No reviews have been published yet.</p>}
     </div>
   </>;
 }
@@ -477,7 +495,7 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
       <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/?desk">See the signal desk</a></div>
       <dl className="landing-facts"><div><dt>What we read</dt><dd>Digits 0–9</dd></div><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Execution</dt><dd>Your decision</dd></div></dl>
     </div>
-    {simulated ? <HomeReviewPreview/> : <section className="landing-feed" aria-label="Deriv market prices">
+    {simulated ? <HomeReviewPreview reviews={settings.homepageReviews ?? defaultReviewSets.homepage}/> : <section className="landing-feed" aria-label="Deriv market prices">
       <div className="landing-feed-head"><div><h2>Live tick feed</h2></div><span className={live ? 'feed-status is-live' : 'feed-status'}><i aria-hidden="true" />{live ? 'Connected' : 'Waiting for feed'}</span></div>
       {shownMarkets.length ? <div className="landing-quotes">{shownMarkets.map(market => <div className="landing-quote" key={market.symbol}><span><strong>{market.name.replace('Volatility ', 'Vol ').replace(' Index', '')}</strong><small>{market.symbol}</small></span><b>{market.quote || '–'}</b></div>)}</div> : <p className="feed-empty">Current Deriv prices will appear here when the market feed is available.</p>}
       <p className="feed-foot">Prices are informational. They are not a promise of a signal or trading result.</p>
@@ -503,7 +521,7 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
   </section>;
   else if (currentTab === 'process') content = <section className="tab-page process-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">HOW DIGIT SIGNALS WORK</p><h1 id="page-title">Every setup starts<br/>with the last digit.</h1><p>Deriv volatility index prices update tick by tick. BrandyFx groups signal ideas around the final digit in a quote and shows which market and contract family a setup refers to.</p></header><div className="family-grid digit-guide-grid">{digitFamilies.map(family => <article className="family-panel" key={family.index}><span className="family-index">{family.index}</span><h2>{family.title}</h2><p>{family.description}</p></article>)}</div><div className="process-list digit-guide-steps">{steps.map(([number, title, description]) => <article className="process-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{description}</p></div></article>)}</div>{simulated && <p className="development-note" role="note"><strong>Development mode:</strong> the current market quotes and generated signal examples are simulated to demonstrate the workflow. They are not live Deriv data.</p>}<p className="digit-guide-risk">Digit contracts can lose money. The payout, probability and contract terms depend on the Deriv market and contract selected. A signal is not a promise of profit.</p></section>;
   else if (currentTab === 'account-management') content = <AccountManagement whatsapp={settings.socialWhatsApp}/>;
-  else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Generated examples show how country-tagged feedback can appear.</p></div><ReviewCarousel/></section>;
+  else if (currentTab === 'reviews') content = <section className="tab-page reviews-section" aria-labelledby="page-title"><div className="tab-heading"><h1 id="page-title">Notes from the<br />community.</h1><p>Illustrative examples and client reviews shared with permission.</p></div><ReviewCarousel reviews={settings.communityReviews ?? defaultReviewSets.community}/></section>;
   else if (currentTab === 'pricing') content = <section className="tab-page pricing-page" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Choose your<br />signal desk.</h1><p>Separate access for each signal family. Every plan includes one free Pipforge bot to pair with its signals. Pay with USDT on TRC20.</p></header><div className="package-grid">{planCards.map(plan => <PackageCard key={plan.key} plan={plan} settings={settings} paidPayment={payments.find(item => item.package === plan.key && item.status === 'approved' && !item.revoked_at && !item.deleted_at)} onCheckout={() => setPurchasePlan(plan)} />)}</div><p className="pricing-note">Pay only to the TRC20 address shown in the BrandyFx payment window. Verify the network and amount before sending.</p></section>;
   else if (currentTab === 'faq') content = <section className="tab-page faq-section" aria-labelledby="page-title"><header className="tab-heading"><h1 id="page-title">Questions,<br />answered.</h1></header><div className="faq-list">{faqs.map(([question, answer]) => <details key={question}><summary>{question}<span aria-hidden="true">+</span></summary><p>{answer}</p></details>)}</div></section>;
   else if (currentTab === 'refund') content = <section className="tab-page legal-page" aria-labelledby="page-title"><header className="tab-heading"><p className="landing-kicker">Legal</p><h1 id="page-title">Refund<br/>policy.</h1><p>Last Updated: January 27, 2026</p></header>

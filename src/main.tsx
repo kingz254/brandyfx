@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import Landing, { PublicSettings } from './landing';
+import Landing, { defaultReviewSets, reviewPackages, type PublicSettings, type ReviewEntry } from './landing';
 import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 import './theme.css';
 
@@ -64,6 +64,7 @@ const defaultSettings: PublicSettings = {
   matchesPrice: 450, matchesOffer: 300, matchesDays: 0,
   promoHeading: "Don't miss your chance", promoSubheading: 'Grants up to 20% off', trc20Wallet: '',
   socialEmail: '', socialWhatsApp: '', socialTelegram: '', socialInstagram: '',
+  homepageReviews: defaultReviewSets.homepage, communityReviews: defaultReviewSets.community,
 };
 const fixtureMarkets: Market[] = marketOrder.map((symbol, market) => {
   const index = symbol.startsWith('1HZ') ? symbol.slice(3, -1) : symbol.slice(2);
@@ -248,6 +249,49 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
       <div className="site-admin-actions"><button className="landing-primary" disabled={busy}>{busy ? 'Saving…' : 'Save site settings'}</button><button type="button" className="landing-secondary" onClick={() => void run('logout')}>Sign out</button></div>
     </form>
     <ManagementRequests />
+  </main>;
+}
+
+function ReviewEditorTable({ title, previewHref, entries, onUpdate, onAdd, onDelete }: { title: string; previewHref: string; entries: ReviewEntry[]; onUpdate: (id: string, field: string, value: string) => void; onAdd: () => void; onDelete: (id: string) => void }) {
+  return <section className="admin-setting-panel review-editor-panel"><div className="section-heading"><div><p className="landing-kicker">Public reviews</p><h2>{title}</h2></div><div className="review-editor-tools"><a className="landing-secondary" href={previewHref} target="_blank" rel="noreferrer">Preview ↗</a><button type="button" className="landing-secondary" onClick={onAdd}>Add review</button></div></div>
+    <p className="admin-panel-note">Use real client wording only when the client has agreed to share it. Mark generated content as an illustrative sample.</p>
+    <div className="review-editor-scroll"><table className="review-editor-table"><thead><tr><th>Review text</th><th>Name</th><th>Country</th><th>Flag code</th><th>Package</th><th>Type</th><th>Remove</th></tr></thead><tbody>
+      {entries.map(entry => <tr key={entry.id}>
+        <td data-label="Review text"><textarea rows={3} maxLength={1000} value={entry.text} onChange={event => onUpdate(entry.id, 'text', event.target.value)} aria-label={`Review text for ${entry.name}`}/></td>
+        <td data-label="Name"><input maxLength={100} value={entry.name} onChange={event => onUpdate(entry.id, 'name', event.target.value)} aria-label={`Name for review by ${entry.name}`}/></td>
+        <td data-label="Country"><input maxLength={90} value={entry.country} onChange={event => onUpdate(entry.id, 'country', event.target.value)} aria-label={`Country for review by ${entry.name}`}/></td>
+        <td data-label="Flag code"><input maxLength={2} value={entry.countryCode} onChange={event => onUpdate(entry.id, 'countryCode', event.target.value.toLowerCase())} placeholder="ke" aria-label={`Two-letter flag code for ${entry.country}`}/></td>
+        <td data-label="Package"><select value={entry.package} onChange={event => onUpdate(entry.id, 'package', event.target.value)} aria-label={`Package for review by ${entry.name}`}>{reviewPackages.map(value => <option key={value}>{value}</option>)}</select></td>
+        <td data-label="Type"><select value={entry.source} onChange={event => onUpdate(entry.id, 'source', event.target.value)} aria-label={`Review type for ${entry.name}`}><option value="sample">Illustrative sample</option><option value="client">Client review · permission confirmed</option></select></td>
+        <td data-label="Remove"><button type="button" className="landing-secondary review-remove" onClick={() => onDelete(entry.id)} aria-label={`Remove review by ${entry.name}`}>Remove</button></td>
+      </tr>)}
+    </tbody></table>{!entries.length && <p className="admin-panel-note">No reviews in this table yet.</p>}</div>
+  </section>;
+}
+
+function ReviewAdmin({ settings, onSaved }: { settings: PublicSettings; onSaved: (value: PublicSettings) => void }) {
+  const [homepageReviews, setHomepageReviews] = useState<ReviewEntry[]>(settings.homepageReviews ?? defaultReviewSets.homepage);
+  const [communityReviews, setCommunityReviews] = useState<ReviewEntry[]>(settings.communityReviews ?? defaultReviewSets.community);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setHomepageReviews(settings.homepageReviews ?? defaultReviewSets.homepage);
+    setCommunityReviews(settings.communityReviews ?? defaultReviewSets.community);
+  }, [settings.homepageReviews, settings.communityReviews]);
+  const update = (setter: typeof setHomepageReviews, id: string, field: string, value: string) => setter(current => current.map(entry => entry.id === id ? { ...entry, [field]: value } as ReviewEntry : entry));
+  const add = (setter: typeof setHomepageReviews) => setter(current => [...current, { id: `review-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, text: '', name: '', country: '', countryCode: '', package: reviewPackages[0], source: 'client' }]);
+  async function save() {
+    setBusy(true); setMessage(''); setError('');
+    try { const result = await api<PublicSettings>('admin/reviews', { homepageReviews, communityReviews }); onSaved({ ...settings, ...result }); setMessage('Reviews saved and published.'); }
+    catch (cause) { setError((cause as Error).message); }
+    finally { setBusy(false); }
+  }
+  return <main className="site-admin layout review-admin"><header className="site-admin-heading"><div><p className="landing-kicker">Review manager</p><h1>Edit reviews</h1><p>Manage the homepage rotation and the Read reviews page.</p></div><a className="landing-secondary" href="/?home&tab=reviews">Preview reviews ↗</a></header>
+    <ReviewEditorTable title={`Homepage rotation · ${homepageReviews.length}`} previewHref="/?home" entries={homepageReviews} onUpdate={(id, field, value) => update(setHomepageReviews, id, field, value)} onAdd={() => add(setHomepageReviews)} onDelete={id => setHomepageReviews(current => current.filter(entry => entry.id !== id))}/>
+    <ReviewEditorTable title={`Read reviews page · ${communityReviews.length}`} previewHref="/?home&tab=reviews" entries={communityReviews} onUpdate={(id, field, value) => update(setCommunityReviews, id, field, value)} onAdd={() => add(setCommunityReviews)} onDelete={id => setCommunityReviews(current => current.filter(entry => entry.id !== id))}/>
+    {(message || error) && <p className={error ? 'admin-message error' : 'admin-message'} role={error ? 'alert' : 'status'}>{error || message}</p>}
+    <div className="site-admin-actions"><button type="button" className="landing-primary" onClick={() => void save()} disabled={busy}>{busy ? 'Saving…' : 'Save and publish reviews'}</button><a className="landing-secondary" href="/?home">View site ↗</a></div>
   </main>;
 }
 
@@ -493,6 +537,7 @@ function App() {
   if (adminRoute && !loaded) page = <main className="layout loading" role="status">Opening BrandyFx admin…</main>;
   else if (adminRoute && member.admin && tab === 'admin') page = <Admin run={run}/>;
   else if (adminRoute && member.admin && tab === 'desk') page = <Desk markets={markets} signals={DEVELOPMENT_SIGNAL_SIMULATION ? simulatedSignals : signals} connected={DEVELOPMENT_SIGNAL_SIMULATION || connected} simulated={DEVELOPMENT_SIGNAL_SIMULATION} allowedFamilies={allowedFamilies} admin />;
+  else if (adminRoute && member.admin && tab === 'reviews') page = <ReviewAdmin settings={settings} onSaved={value => setSettings(value)}/>;
   else if (adminRoute && member.admin) page = <SiteAdmin settings={settings} onSaved={value => setSettings(value)} run={run} />;
   else if (adminRoute) page = <AdminLogin pending={pending} notice={notice} run={run}/>;
   else if (!loaded) page = <main className="layout loading" role="status">Opening BrandyFx…</main>;
@@ -537,6 +582,7 @@ function App() {
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
         <button className="quiet" aria-pressed={tab === 'admin'} onClick={() => setTab('admin')}>Clients</button>
+        <button className="quiet" aria-pressed={tab === 'reviews'} onClick={() => setTab('reviews')}>Reviews</button>
         <a className="quiet" href="/kingz.html">Site settings</a></>}
       {(member.admin || member.account) ? <button className="quiet" disabled={pending} onClick={() => void run('logout')}>Sign out</button> : null}
     </nav>

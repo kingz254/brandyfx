@@ -110,7 +110,9 @@ async function siteSettings() {
     offerActive: Boolean(settings.offerEnabled && Number.isFinite(ends) && ends > Date.now()), offerEndsAt: settings.offerEndsAt,
     promoHeading: settings.promoHeading, promoSubheading: settings.promoSubheading, trc20Wallet: settings.trc20Wallet,
     socialEmail: settings.socialEmail || '', socialWhatsApp: settings.socialWhatsApp || '',
-    socialTelegram: settings.socialTelegram || '', socialInstagram: settings.socialInstagram || '' };
+    socialTelegram: settings.socialTelegram || '', socialInstagram: settings.socialInstagram || '',
+    homepageReviews: Array.isArray(settings.homepageReviews) ? settings.homepageReviews : undefined,
+    communityReviews: Array.isArray(settings.communityReviews) ? settings.communityReviews : undefined };
 }
 const markets = () => rows(`SELECT symbol,name,quote,points,updated,
   ready AND updated > now()-interval '15 seconds' AS live FROM markets ORDER BY symbol`);
@@ -437,6 +439,31 @@ async function api(req, res, url) {
     return json(res, 200, await rows(`SELECT id,name,amount,start_date,status,created
       FROM account_management_requests ORDER BY (status='new') DESC,id DESC LIMIT 200`));
   }
+  if (method === 'POST' && path === '/api/admin/reviews') {
+    const input = await body(req);
+    const packages = ['Even / Odd · Regular', 'Over 6 / Under 3 · Regular', 'Matches · V.I.P.'];
+    const cleanReviews = value => {
+      if (!Array.isArray(value) || value.length > 60) throw error(400, 'Each review table can contain up to 60 entries.');
+      return value.map((item, index) => {
+        if (!item || typeof item !== 'object' ||
+          typeof item.id !== 'string' || !/^[A-Za-z0-9_-]{1,80}$/.test(item.id) ||
+          typeof item.text !== 'string' || !item.text.trim() || item.text.length > 1000 ||
+          typeof item.name !== 'string' || !item.name.trim() || item.name.length > 100 ||
+          typeof item.country !== 'string' || !item.country.trim() || item.country.length > 90 ||
+          typeof item.countryCode !== 'string' || item.countryCode !== '' && !/^[a-z]{2}$/.test(item.countryCode) ||
+          !packages.includes(item.package) || !['sample', 'client'].includes(item.source)) {
+          throw error(400, `Check the review text, name, country, flag code, package and source on row ${index + 1}.`);
+        }
+        return { id: item.id, text: item.text.trim(), name: item.name.trim(), country: item.country.trim(), countryCode: item.countryCode, package: item.package, source: item.source };
+      });
+    };
+    const homepageReviews = cleanReviews(input.homepageReviews);
+    const communityReviews = cleanReviews(input.communityReviews);
+    const stored = await one('SELECT settings FROM site_settings WHERE id=true');
+    const settings = { ...(stored?.settings || {}), homepageReviews, communityReviews };
+    await db.query('INSERT INTO site_settings(id,settings) VALUES(true,$1::jsonb) ON CONFLICT(id) DO UPDATE SET settings=$1::jsonb', [JSON.stringify(settings)]);
+    return json(res, 200, await siteSettings());
+  }
   if (method === 'GET' && path === '/api/admin/site-settings') return json(res, 200, await siteSettings());
   if (method === 'POST' && path === '/api/admin/site-settings') {
     const input = await body(req);
@@ -462,7 +489,8 @@ async function api(req, res, url) {
       typeof input.promoHeading !== 'string' || !input.promoHeading.trim() || input.promoHeading.length > 90 || typeof input.promoSubheading !== 'string' || !input.promoSubheading.trim() || input.promoSubheading.length > 140 || !validWallet ||
       input.offerEndsAt !== '' && !Number.isFinite(new Date(input.offerEndsAt).getTime()) ||
       input.offerEnabled && (!offerEndsAt || endTime <= Date.now()) || !validSocials) throw error(400, 'Check the prices, terms, media URL, offer end time, TRC20 address and contact links.');
-    const settings = { backgroundUrl: input.backgroundUrl, videoOpacity: input.videoOpacity, glassOpacity: input.glassOpacity,
+    const current = await one('SELECT settings FROM site_settings WHERE id=true');
+    const settings = { ...(current?.settings || {}), backgroundUrl: input.backgroundUrl, videoOpacity: input.videoOpacity, glassOpacity: input.glassOpacity,
       ...Object.fromEntries(plans.flatMap(plan => [[`${plan}Price`, input[`${plan}Price`]], [`${plan}Offer`, input[`${plan}Offer`]], [`${plan}Days`, input[`${plan}Days`]]])), offerEnabled: input.offerEnabled, offerEndsAt,
       promoHeading: input.promoHeading.trim(), promoSubheading: input.promoSubheading.trim(), trc20Wallet: input.trc20Wallet,
       socialEmail: input.socialEmail.trim(), socialWhatsApp: input.socialWhatsApp.trim(),
