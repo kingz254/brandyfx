@@ -158,6 +158,46 @@ function sampleReview(round: number, index: number) {
   return { country: country.country, countryCode: country.code, name: `${firstName} ${lastName}`, text: reviewCopy[(round + index * 2) % reviewCopy.length] };
 }
 
+const homeReviewSamples = [
+  { text: 'I like how the Even / Odd signals sit beside the matching bot details. It is easy to understand what each setup refers to.', package: 'Even / Odd · Regular' },
+  { text: 'The Over 6 / Under 3 desk makes the digit ranges clear, so I can review a signal before choosing what to do.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'Matches V.I.P. gives me a focused view for exact digits, and the included bots are easy to find.', package: 'Matches · V.I.P.' },
+  { text: 'I appreciate having the market context close to the signals. The layout makes the information simple to follow.', package: 'Even / Odd · Regular' },
+  { text: 'The package details are clear, and I can see which bot goes with the signal family I selected.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'I enjoy how the Matches setup names the prediction digit directly. It makes the idea easy to review.', package: 'Matches · V.I.P.' },
+  { text: 'The signal history and latest price are together, which helps me check the context before making my own decision.', package: 'Even / Odd · Regular' },
+  { text: 'The Over 6 / Under 3 guide explains the thresholds in a way that is quick to understand.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The VIP package brings the three signal tabs together, and the interface feels well organised.', package: 'Matches · V.I.P.' },
+  { text: 'I like that the Even / Odd view keeps the final digit and the signal direction easy to spot.', package: 'Even / Odd · Regular' },
+  { text: 'Finding the matching bot beside the desk makes it straightforward to keep the right file with the right signals.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The Matches page is uncluttered, and I can focus on the prediction digit and recent market context.', package: 'Matches · V.I.P.' },
+  { text: 'BrandyFx makes the digit-based setup easy to scan on my phone. I can check the details without hunting around.', package: 'Even / Odd · Regular' },
+  { text: 'I appreciate the clear reminders to review the contract and make my own trading decisions.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The signal tabs, bot downloads and package information are all easy to navigate.', package: 'Matches · V.I.P.' },
+] as const;
+
+function HomeReviewPreview() {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => setIndex(value => (value + 1) % homeReviewSamples.length), 5200);
+    return () => clearInterval(timer);
+  }, []);
+  const person = sampleReview(index, index);
+  const review = homeReviewSamples[index];
+  return <section className="landing-feed home-review-preview" aria-label="Generated illustrative review preview">
+    <div className="landing-feed-head"><h2>Review preview</h2><span className="feed-status"><i aria-hidden="true" />Illustrative samples</span></div>
+    <p className="home-review-disclosure">Generated examples only — these are not reviews from real customers.</p>
+    <div className="home-review-stage" aria-live="off">
+      <article className={`home-review-slide review-v${(index % 10) + 1}`} key={index}>
+        <span className="review-quote-mark" aria-hidden="true">“</span>
+        <p className="home-review-copy">{review.text}</p>
+        <div className="home-review-person"><span className="review-flag"><img src={`https://flagcdn.com/w40/${person.countryCode}.png`} alt={`Flag of ${person.country}`} loading="lazy" referrerPolicy="no-referrer" /></span><span className="home-review-identity"><b>{person.name}</b><small>{person.country}</small></span><span className="home-review-package">{review.package}</span></div>
+      </article>
+    </div>
+    <p className="home-review-count">Sample {String(index + 1).padStart(2, '0')} / {homeReviewSamples.length}</p>
+  </section>;
+}
+
 function ReviewCarousel() {
   const [round, setRound] = useState(0);
   useEffect(() => {
@@ -423,11 +463,11 @@ export default function Landing({ markets, tab, settings, simulated = false, rot
       <div className="landing-actions"><a className="landing-primary" href={tabHref('pricing')}>Explore access <span aria-hidden="true">↗</span></a><a className="landing-secondary" href="/?desk">See the signal desk</a></div>
       <dl className="landing-facts"><div><dt>What we read</dt><dd>Digits 0–9</dd></div><div><dt>Signal families</dt><dd>03</dd></div><div><dt>Execution</dt><dd>Your decision</dd></div></dl>
     </div>
-    <section className="landing-feed" aria-label="Deriv market prices">
-      <div className="landing-feed-head"><div><h2>{simulated ? 'Market preview' : 'Live tick feed'}</h2></div><span className={live && !simulated ? 'feed-status is-live' : 'feed-status'}><i aria-hidden="true" />{simulated ? 'Development simulation' : live ? 'Connected' : 'Waiting for feed'}</span></div>
+    {simulated ? <HomeReviewPreview/> : <section className="landing-feed" aria-label="Deriv market prices">
+      <div className="landing-feed-head"><div><h2>Live tick feed</h2></div><span className={live ? 'feed-status is-live' : 'feed-status'}><i aria-hidden="true" />{live ? 'Connected' : 'Waiting for feed'}</span></div>
       {shownMarkets.length ? <div className="landing-quotes">{shownMarkets.map(market => <div className="landing-quote" key={market.symbol}><span><strong>{market.name.replace('Volatility ', 'Vol ').replace(' Index', '')}</strong><small>{market.symbol}</small></span><b>{market.quote || '–'}</b></div>)}</div> : <p className="feed-empty">Current Deriv prices will appear here when the market feed is available.</p>}
-      <p className="feed-foot">{simulated ? 'Development preview: these sample prices are simulated, not live Deriv quotes.' : 'Prices are informational. They are not a promise of a signal or trading result.'}</p>
-    </section>
+      <p className="feed-foot">Prices are informational. They are not a promise of a signal or trading result.</p>
+    </section>}
   </section>
     <section className="landing-section home-digit-section" aria-labelledby="digit-overview-title">
       <div className="landing-section-heading"><div><p className="landing-kicker">A DIGIT-FIRST APPROACH</p><h2 id="digit-overview-title">One last digit.<br/>Three ways to read it.</h2></div><p>Each setup is tied to a Deriv volatility market. The signal desk groups the idea by contract type so you can understand what a signal refers to before making your own trading decision.</p></div>
