@@ -3,7 +3,7 @@ import type { FormEvent } from 'react';
 import { downloadReceipt, receiptMailto, type ReceiptDetails } from './receipt';
 
 export type MarketSample = { symbol: string; name: string; quote: string; updated: string; live: boolean };
-export type ReviewEntry = { id: string; text: string; name: string; country: string; countryCode: string; package: string; source: 'sample' | 'client' };
+export type ReviewEntry = { id: string; text: string; name: string; country: string; countryCode: string; package: string; rating: number; source: 'sample' | 'client' };
 export const reviewPackages = ['Even / Odd · Regular', 'Over 6 / Under 3 · Regular', 'Matches · V.I.P.'] as const;
 export type PublicSettings = {
   backgroundUrl: string;
@@ -198,13 +198,18 @@ const homeReviewSamples = [
 export const defaultReviewSets = {
   homepage: homeReviewSamples.map((review, index): ReviewEntry => {
     const person = sampleReview(index, index);
-    return { id: `home-${index + 1}`, ...person, ...review, source: 'sample' };
+    return { id: `home-${index + 1}`, ...person, ...review, rating: index % 5 === 0 ? 4 : 5, source: 'sample' };
   }),
   community: Array.from({ length: 10 }, (_, index): ReviewEntry => {
     const person = sampleReview(0, index);
-    return { id: `community-${index + 1}`, ...person, package: reviewPackages[index % reviewPackages.length], source: 'sample' };
+    return { id: `community-${index + 1}`, ...person, package: reviewPackages[index % reviewPackages.length], rating: index % 4 === 0 ? 4 : 5, source: 'sample' };
   }),
 };
+
+function ReviewStars({ rating }: { rating: number }) {
+  const value = Math.max(1, Math.min(5, Math.round(rating || 5)));
+  return <span className="review-stars" role="img" aria-label={`${value} out of 5 stars`}><span>{'★'.repeat(value)}</span><span className="review-stars-empty">{'☆'.repeat(5 - value)}</span></span>;
+}
 
 function HomeReviewPreview({ reviews }: { reviews: ReviewEntry[] }) {
   const [index, setIndex] = useState(0);
@@ -219,7 +224,7 @@ function HomeReviewPreview({ reviews }: { reviews: ReviewEntry[] }) {
     <p className="home-review-disclosure">Illustrative samples are labelled. Client reviews are shared with permission.</p>
     <div className="home-review-stage" aria-live="off">
       {review ? <article className={`home-review-slide review-v${(index % 10) + 1}`} key={review.id}>
-        <span className="review-quote-mark" aria-hidden="true">“</span>
+        <div className="home-review-top"><span className="review-quote-mark" aria-hidden="true">“</span><ReviewStars rating={review.rating}/></div>
         <p className="home-review-copy">{review.text}</p>
         <div className="home-review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span className="home-review-identity"><b>{review.name}</b><small>{review.country}</small></span><span className="home-review-package">{review.package}</span><small className="home-review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></div>
       </article> : <p className="feed-empty">No reviews have been added to the homepage rotation yet.</p>}
@@ -240,7 +245,7 @@ function ReviewCarousel({ reviews }: { reviews: ReviewEntry[] }) {
     <p className="review-disclosure">Illustrative examples are labelled. Client reviews are shown with permission.</p>
     <div className="review-wall" aria-live="off">
       {visibleReviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.id}`}>
-        <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span></div>
+        <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><ReviewStars rating={review.rating}/></div>
         <p className="review-copy">{review.text}</p>
         <div className="review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span><b>{review.name}</b><small>{review.country}</small><small className="review-package">{review.package}</small><small className="review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></span></div>
       </article>)}

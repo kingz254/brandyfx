@@ -255,13 +255,14 @@ function SiteAdmin({ settings, onSaved, run }: { settings: PublicSettings; onSav
 function ReviewEditorTable({ title, previewHref, entries, onUpdate, onAdd, onDelete }: { title: string; previewHref: string; entries: ReviewEntry[]; onUpdate: (id: string, field: string, value: string) => void; onAdd: () => void; onDelete: (id: string) => void }) {
   return <section className="admin-setting-panel review-editor-panel"><div className="section-heading"><div><p className="landing-kicker">Public reviews</p><h2>{title}</h2></div><div className="review-editor-tools"><a className="landing-secondary" href={previewHref} target="_blank" rel="noreferrer">Preview ↗</a><button type="button" className="landing-secondary" onClick={onAdd}>Add review</button></div></div>
     <p className="admin-panel-note">Use real client wording only when the client has agreed to share it. Mark generated content as an illustrative sample.</p>
-    <div className="review-editor-scroll"><table className="review-editor-table"><thead><tr><th>Review text</th><th>Name</th><th>Country</th><th>Flag code</th><th>Package</th><th>Type</th><th>Remove</th></tr></thead><tbody>
+    <div className="review-editor-scroll"><table className="review-editor-table"><thead><tr><th>Review text</th><th>Name</th><th>Country</th><th>Flag code</th><th>Package</th><th>Rating</th><th>Type</th><th>Remove</th></tr></thead><tbody>
       {entries.map(entry => <tr key={entry.id}>
         <td data-label="Review text"><textarea rows={3} maxLength={1000} value={entry.text} onChange={event => onUpdate(entry.id, 'text', event.target.value)} aria-label={`Review text for ${entry.name}`}/></td>
         <td data-label="Name"><input maxLength={100} value={entry.name} onChange={event => onUpdate(entry.id, 'name', event.target.value)} aria-label={`Name for review by ${entry.name}`}/></td>
         <td data-label="Country"><input maxLength={90} value={entry.country} onChange={event => onUpdate(entry.id, 'country', event.target.value)} aria-label={`Country for review by ${entry.name}`}/></td>
         <td data-label="Flag code"><input maxLength={2} value={entry.countryCode} onChange={event => onUpdate(entry.id, 'countryCode', event.target.value.toLowerCase())} placeholder="ke" aria-label={`Two-letter flag code for ${entry.country}`}/></td>
         <td data-label="Package"><select value={entry.package} onChange={event => onUpdate(entry.id, 'package', event.target.value)} aria-label={`Package for review by ${entry.name}`}>{reviewPackages.map(value => <option key={value}>{value}</option>)}</select></td>
+        <td data-label="Rating"><select value={entry.rating ?? 5} onChange={event => onUpdate(entry.id, 'rating', event.target.value)} aria-label={`Star rating for review by ${entry.name}`}>{[5, 4, 3, 2, 1].map(value => <option key={value} value={value}>{'★'.repeat(value)}{'☆'.repeat(5 - value)} · {value}/5</option>)}</select></td>
         <td data-label="Type"><select value={entry.source} onChange={event => onUpdate(entry.id, 'source', event.target.value)} aria-label={`Review type for ${entry.name}`}><option value="sample">Illustrative sample</option><option value="client">Client review · permission confirmed</option></select></td>
         <td data-label="Remove"><button type="button" className="landing-secondary review-remove" onClick={() => onDelete(entry.id)} aria-label={`Remove review by ${entry.name}`}>Remove</button></td>
       </tr>)}
@@ -279,8 +280,8 @@ function ReviewAdmin({ settings, onSaved }: { settings: PublicSettings; onSaved:
     setHomepageReviews(settings.homepageReviews ?? defaultReviewSets.homepage);
     setCommunityReviews(settings.communityReviews ?? defaultReviewSets.community);
   }, [settings.homepageReviews, settings.communityReviews]);
-  const update = (setter: typeof setHomepageReviews, id: string, field: string, value: string) => setter(current => current.map(entry => entry.id === id ? { ...entry, [field]: value } as ReviewEntry : entry));
-  const add = (setter: typeof setHomepageReviews) => setter(current => [...current, { id: `review-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, text: '', name: '', country: '', countryCode: '', package: reviewPackages[0], source: 'client' }]);
+  const update = (setter: typeof setHomepageReviews, id: string, field: string, value: string) => setter(current => current.map(entry => entry.id === id ? { ...entry, [field]: field === 'rating' ? Number(value) : value } as ReviewEntry : entry));
+  const add = (setter: typeof setHomepageReviews) => setter(current => [...current, { id: `review-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, text: '', name: '', country: '', countryCode: '', package: reviewPackages[0], rating: 5, source: 'client' }]);
   async function save() {
     setBusy(true); setMessage(''); setError('');
     try { const result = await api<PublicSettings>('admin/reviews', { homepageReviews, communityReviews }); onSaved({ ...settings, ...result }); setMessage('Reviews saved and published.'); }

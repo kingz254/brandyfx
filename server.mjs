@@ -451,10 +451,10 @@ async function api(req, res, url) {
           typeof item.name !== 'string' || !item.name.trim() || item.name.length > 100 ||
           typeof item.country !== 'string' || !item.country.trim() || item.country.length > 90 ||
           typeof item.countryCode !== 'string' || item.countryCode !== '' && !/^[a-z]{2}$/.test(item.countryCode) ||
-          !packages.includes(item.package) || !['sample', 'client'].includes(item.source)) {
-          throw error(400, `Check the review text, name, country, flag code, package and source on row ${index + 1}.`);
+          !packages.includes(item.package) || !['sample', 'client'].includes(item.source) || item.rating !== undefined && (!Number.isInteger(item.rating) || item.rating < 1 || item.rating > 5)) {
+          throw error(400, `Check the review text, name, country, flag code, package, 1–5 star rating and source on row ${index + 1}.`);
         }
-        return { id: item.id, text: item.text.trim(), name: item.name.trim(), country: item.country.trim(), countryCode: item.countryCode, package: item.package, source: item.source };
+        return { id: item.id, text: item.text.trim(), name: item.name.trim(), country: item.country.trim(), countryCode: item.countryCode, package: item.package, rating: item.rating ?? 5, source: item.source };
       });
     };
     const homepageReviews = cleanReviews(input.homepageReviews);
