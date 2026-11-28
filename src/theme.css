@@ -1149,10 +1149,10 @@ body { color: var(--tone-fff); }
   .signal-table .signal-timer-row { display: block; padding: .35rem .75rem; border-top: 1px solid rgb(81 231 163 / .16); background: rgb(81 231 163 / .07); }
   .signal-table .signal-timer-row td { display: block; padding: .35rem 0; border: 0; text-align: left; }
   .payment-table-scroll { overflow: visible; border: 0; }
-  .payment-table { display: block; width: 100%; }
+  .payment-table { display: block; width: 100%; min-width: 0; max-width: 100%; }
   .payment-table thead { display: none; }
-  .payment-table tbody { display: grid; gap: .65rem; }
-  .payment-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--tone-ffffff29); border-radius: .85rem; background: var(--tone-04130ed9); }
+  .payment-table tbody { display: grid; width: 100%; min-width: 0; gap: .65rem; }
+  .payment-table tr { display: grid; width: 100%; min-width: 0; box-sizing: border-box; grid-template-columns: repeat(2, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--tone-ffffff29); border-radius: .85rem; background: var(--tone-04130ed9); }
   .payment-table td { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); align-content: start; gap: .3rem; padding: .65rem; border-bottom: 1px solid var(--tone-ffffff18); overflow-wrap: anywhere; }
   .payment-table td::before { content: attr(data-label); color: var(--tone-51e7a3); font-size: .64rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
   .payment-table td:first-child, .payment-table td:last-child { grid-column: 1 / -1; }
