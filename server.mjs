@@ -330,6 +330,8 @@ async function api(req, res, url) {
     const accounts = (await one('SELECT accounts FROM sessions WHERE id=$1', [id]))?.accounts || [];
     const payment = account ? await one(`SELECT id,status,created,expires,revoked_at,deleted_at,package,reference,amount,currency,customer_name,customer_email,customer_country,rot_number FROM payments
       WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`, [account]) : null;
+    const payments = account ? await rows(`SELECT id,status,created,expires,revoked_at,deleted_at,package,reference,amount,currency,customer_name,customer_email,customer_country,rot_number FROM payments
+      WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 100`, [account]) : [];
     const profile = account ? await one(`SELECT customer_name AS name,customer_email AS email,customer_country AS country,rot_number
       FROM payments WHERE account_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`, [account]) : null;
     const packages = state?.packages || [];
@@ -340,7 +342,7 @@ async function api(req, res, url) {
     ];
     return json(res, 200, { ready: Boolean(process.env.DERIV_CLIENT_ID), launched: approved, account, accounts, admin,
       passUntil: state?.lifetime_access ? null : state?.pass_until, lifetimeAccess: Boolean(state?.lifetime_access),
-      allowedFamilies, payment, profile, offer: account ? await offer() : null });
+      allowedFamilies, payment, payments, profile, offer: account ? await offer() : null });
   }
   if (method === 'POST' && path === '/api/account/select') {
     const { accountId } = await body(req);
@@ -368,6 +370,10 @@ async function api(req, res, url) {
     const client = await db.connect();
     try {
       await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [rot]);
+      const existingPackage = (await client.query(`SELECT id FROM payments WHERE account_id=$1 AND package=$2
+        AND status='approved' AND revoked_at IS NULL AND deleted_at IS NULL AND (expires IS NULL OR expires>now()) LIMIT 1 FOR UPDATE`, [rot, tier])).rows[0];
+      if (existingPackage) throw error(409, 'This package is already paid and active. Contact BrandyFx if you need access restored.');
       const result = (await client.query(`WITH settings AS (SELECT settings FROM site_settings WHERE id=true), plan AS (
       SELECT CASE WHEN coalesce((settings->>'offerEnabled')::boolean,false) AND NULLIF(settings->>'offerEndsAt','')::timestamptz>now()
           THEN CASE $3 WHEN 'evenOdd' THEN (settings->>'evenOddOffer')::numeric WHEN 'overUnder' THEN (settings->>'overUnderOffer')::numeric ELSE (settings->>'matchesOffer')::numeric END
