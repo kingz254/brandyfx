@@ -502,8 +502,10 @@ function App() {
   else if (showingDesk && deviceConflict) page = <main className="login-page"><a className="login-brand" href="/?home" aria-label="BrandyFx home"><img src="/brand/brandyfx-wordmark.png" alt="BrandyFx — Forex trading and binary options" /></a>
     <section className="login-card device-conflict-card"><p className="landing-kicker">SIGNAL ACCESS</p><h1>Device lock conflict</h1>
       <p>This Deriv account’s signal access is registered to another device. Contact BrandyFx if you need to transfer access. You do not need to pay again.</p>
-      {settings.socialWhatsApp && <a className="primary deriv-login" href={settings.socialWhatsApp} target="_blank" rel="noreferrer">Contact BrandyFx on WhatsApp</a>}
-      {settings.socialEmail && <a className="token-login device-contact-link" href={`mailto:${settings.socialEmail}?subject=${encodeURIComponent('Request to change BrandyFx device access')}`}>Email BrandyFx</a>}
+      {(settings.socialWhatsApp || settings.socialEmail) && <div className="device-conflict-actions">
+        {settings.socialWhatsApp && <a className="primary deriv-login" href={settings.socialWhatsApp} target="_blank" rel="noreferrer">Contact BrandyFx on WhatsApp</a>}
+        {settings.socialEmail && <a className="token-login device-contact-link" href={`mailto:${settings.socialEmail}?subject=${encodeURIComponent('Request to change BrandyFx device access')}`}>Email BrandyFx</a>}
+      </div>}
       {!settings.socialWhatsApp && !settings.socialEmail && <p>Use the BrandyFx contact details shared with you to request a device change.</p>}
       <a className="login-terms" href="/?home">Back to home</a>
     </section></main>;
