@@ -1100,6 +1100,27 @@ body { color: var(--tone-fff); }
 .signal-bot-download-link:hover { filter: brightness(1.08); }
 
 @media (max-width: 48rem) {
+  .admin.layout, .site-admin.layout { width: min(100% - 1.25rem, 88rem); }
+  .admin.layout { padding-top: 1.25rem; }
+  .admin.layout > h1 { margin-bottom: .75rem; font-size: clamp(2.4rem, 11vw, 3.6rem); }
+  .top-admin { width: min(100% - 1rem, 88rem); align-items: center; gap: .35rem .8rem; padding-inline: .75rem; }
+  .top-admin .wordmark { flex: 0 0 auto; font-size: 1.15rem; }
+  .top.top-admin nav { flex: 1 1 100%; flex-wrap: nowrap; justify-content: flex-start; min-width: 0; margin-inline: -.2rem; padding: .1rem .2rem .25rem; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .top.top-admin nav .quiet { flex: 0 0 auto; min-width: max-content; min-height: 2.45rem; padding: .45rem .75rem; font-size: .82rem; }
+  .site-admin { padding-block: 1.5rem 3rem; }
+  .site-admin-heading { gap: .8rem; }
+  .site-admin-heading h1 { font-size: clamp(2.5rem, 11vw, 3.8rem); }
+  .site-admin-heading > a { width: 100%; justify-content: center; }
+  .admin-setting-panel { min-width: 0; padding: 1rem; border-radius: .95rem; }
+  .admin-setting-panel > label, .admin-field-grid label { min-width: 0; }
+  .admin-setting-panel input:not([type=range]):not([type=checkbox]) { min-width: 0; min-height: 2.9rem; }
+  .admin-plan-grid fieldset { min-width: 0; }
+  .site-admin-actions { position: sticky; z-index: 3; bottom: max(.4rem, env(safe-area-inset-bottom)); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .55rem; margin: .2rem -.35rem; padding: .6rem; border: 1px solid var(--tone-ffffff24); border-radius: .85rem; background: linear-gradient(145deg, rgb(10 24 18 / .96), rgb(3 10 7 / .96)); box-shadow: 0 8px 24px rgb(0 0 0 / .3); backdrop-filter: blur(18px); }
+  .site-admin-actions > button { min-height: 2.8rem; padding: .65rem .85rem; white-space: nowrap; }
+  .payment-records .section-heading { align-items: flex-start; }
+  .payment-records .section-heading > button { flex: 0 0 auto; min-height: 2.5rem; padding: .55rem .75rem; }
+  .client-package-filters { flex-wrap: nowrap; margin-inline: -.15rem; padding: .15rem .15rem .45rem; overflow-x: auto; overscroll-behavior-inline: contain; scrollbar-width: thin; }
+  .client-package-filters button { flex: 0 0 auto; min-height: 2.6rem; }
   .top { height: auto; min-height: 4rem; flex-wrap: wrap; padding-block: .55rem; }
   .top nav { flex: 1 1 100%; flex-wrap: wrap; justify-content: flex-start; gap: .35rem; }
   .top nav .quiet { flex: 1 1 auto; min-width: max-content; }
@@ -1139,4 +1160,15 @@ body { color: var(--tone-fff); }
   .payment-table code { white-space: normal; overflow-wrap: anywhere; }
   .record-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
   .record-actions > * { flex: 1 1 9rem; }
+}
+
+@media (max-width: 30rem) {
+  .payment-table tr { grid-template-columns: minmax(0, 1fr); }
+  .payment-table td:not(:first-child):not(:last-child) { grid-template-columns: minmax(6.25rem, 36%) minmax(0, 1fr); align-items: start; }
+  .payment-table td:first-child { grid-template-columns: minmax(0, 1fr); }
+  .payment-table td:last-child { padding-top: .75rem; }
+  .record-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .record-actions > * { min-width: 0; width: 100%; }
+  .site-admin-actions { grid-template-columns: minmax(0, 1fr); }
+  .site-admin-actions > button { width: 100%; }
 }
