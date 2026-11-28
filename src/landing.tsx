@@ -220,13 +220,13 @@ function HomeReviewPreview({ reviews }: { reviews: ReviewEntry[] }) {
   }, [reviews.length]);
   const review = reviews.length ? reviews[index % reviews.length] : null;
   return <section className="landing-feed home-review-preview" aria-label="Generated illustrative review preview">
-    <div className="landing-feed-head"><h2>Review preview</h2><span className="feed-status"><i aria-hidden="true" />{review?.source === 'client' ? 'Client review' : review ? 'Illustrative sample' : 'No reviews'}</span></div>
+    <div className="landing-feed-head"><h2>Review preview</h2><span className="feed-status"><i aria-hidden="true" />{review?.source === 'client' ? 'Verified purchase' : review ? 'Illustrative sample' : 'No reviews'}</span></div>
     <p className="home-review-disclosure">Illustrative samples are labelled. Client reviews are shared with permission.</p>
     <div className="home-review-stage" aria-live="off">
       {review ? <article className={`home-review-slide review-v${(index % 10) + 1}`} key={review.id}>
         <div className="home-review-top"><span className="review-quote-mark" aria-hidden="true">“</span><ReviewStars rating={review.rating}/></div>
         <p className="home-review-copy">{review.text}</p>
-        <div className="home-review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span className="home-review-identity"><b>{review.name}</b><small>{review.country}</small></span><span className="home-review-package">{review.package}</span><small className="home-review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></div>
+        <div className="home-review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span className="home-review-identity"><b>{review.name}</b><small>{review.country}</small></span><span className="home-review-package">{review.package}</span><small className="home-review-source">{review.source === 'client' ? 'Verified purchase' : 'Illustrative sample'}</small></div>
       </article> : <p className="feed-empty">No reviews have been added to the homepage rotation yet.</p>}
     </div>
   </section>;
@@ -247,7 +247,7 @@ function ReviewCarousel({ reviews }: { reviews: ReviewEntry[] }) {
       {visibleReviews.map((review, index) => <article className={`review-card review-v${((round + index) % 10) + 1}`} key={`${round}-${review.id}`}>
         <div className="review-card-top"><span className="review-quote-mark" aria-hidden="true">“</span><ReviewStars rating={review.rating}/></div>
         <p className="review-copy">{review.text}</p>
-        <div className="review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span><b>{review.name}</b><small>{review.country}</small><small className="review-package">{review.package}</small><small className="review-source">{review.source === 'client' ? 'Client review · shared with permission' : 'Illustrative sample'}</small></span></div>
+        <div className="review-person">{review.countryCode && <span className="review-flag"><img src={`https://flagcdn.com/w40/${review.countryCode}.png`} alt={`Flag of ${review.country}`} loading="lazy" referrerPolicy="no-referrer" /></span>}<span><b>{review.name}</b><small>{review.country}</small><small className="review-package">{review.package}</small><small className="review-source">{review.source === 'client' ? 'Verified purchase' : 'Illustrative sample'}</small></span></div>
       </article>)}
       {!visibleReviews.length && <p className="review-disclosure">No reviews have been published yet.</p>}
     </div>
