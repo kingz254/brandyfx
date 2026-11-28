@@ -552,7 +552,6 @@ a.deriv-login { display: flex; align-items: center; justify-content: center; tex
 .home-review-identity b { font-size: .8rem; }
 .home-review-identity small { color: var(--night-muted); font-size: .7rem; }
 .home-review-package { grid-column: 2; width: fit-content; max-width: 100%; padding: .24rem .5rem; border: 1px solid var(--login-line); border-radius: 99rem; color: var(--emerald-bright); font-size: .65rem; line-height: 1.3; overflow-wrap: anywhere; }
-.home-review-count { padding-top: .7rem; color: var(--night-muted); font: .65rem var(--numbers); text-align: right; }
 @keyframes home-review-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .home-review-slide { animation: none; } }
 .landing-section { padding-block: clamp(4.5rem, 8vw, 7.5rem); scroll-margin-top: 6.5rem; }

@@ -174,6 +174,21 @@ const homeReviewSamples = [
   { text: 'BrandyFx makes the digit-based setup easy to scan on my phone. I can check the details without hunting around.', package: 'Even / Odd · Regular' },
   { text: 'I appreciate the clear reminders to review the contract and make my own trading decisions.', package: 'Over 6 / Under 3 · Regular' },
   { text: 'The signal tabs, bot downloads and package information are all easy to navigate.', package: 'Matches · V.I.P.' },
+  { text: 'The Even / Odd signals are simple to scan, and I can find the matching bot without leaving the desk.', package: 'Even / Odd · Regular' },
+  { text: 'I like that the Over 6 / Under 3 setup explains which digits fall inside each range.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The Matches V.I.P. package keeps the exact-digit signals together with the extra support details.', package: 'Matches · V.I.P.' },
+  { text: 'The signals are presented clearly, and the reminders help me take time to review every trade.', package: 'Even / Odd · Regular' },
+  { text: 'I can quickly check the current context and see whether a signal is Over 6 or Under 3.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'I enjoy seeing the prediction digit called out directly in the Matches desk.', package: 'Matches · V.I.P.' },
+  { text: 'The Even / Odd page is organised in a way that makes the recent setups easy to follow.', package: 'Even / Odd · Regular' },
+  { text: 'Having the Over / Under guide and bot details close to the signals makes navigation easier.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The V.I.P. package gives me one place to review all three signal families.', package: 'Matches · V.I.P.' },
+  { text: 'The market price and signal label are easy to compare on the Even / Odd tab.', package: 'Even / Odd · Regular' },
+  { text: 'The Over 6 / Under 3 package information is clear, including which bot file is included.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'The exact-digit format makes the Matches signal straightforward to understand.', package: 'Matches · V.I.P.' },
+  { text: 'I like the clean layout and the way the Even / Odd signal history is presented.', package: 'Even / Odd · Regular' },
+  { text: 'The signal desk helps me review the digit context while keeping the final decision in my hands.', package: 'Over 6 / Under 3 · Regular' },
+  { text: 'It is convenient to have the Matches signals and included bot downloads grouped together.', package: 'Matches · V.I.P.' },
 ] as const;
 
 function HomeReviewPreview() {
@@ -194,7 +209,6 @@ function HomeReviewPreview() {
         <div className="home-review-person"><span className="review-flag"><img src={`https://flagcdn.com/w40/${person.countryCode}.png`} alt={`Flag of ${person.country}`} loading="lazy" referrerPolicy="no-referrer" /></span><span className="home-review-identity"><b>{person.name}</b><small>{person.country}</small></span><span className="home-review-package">{review.package}</span></div>
       </article>
     </div>
-    <p className="home-review-count">Sample {String(index + 1).padStart(2, '0')} / {homeReviewSamples.length}</p>
   </section>;
 }
 
