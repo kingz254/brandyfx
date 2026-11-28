@@ -265,13 +265,14 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
   useEffect(() => { void load(); }, []);
   const planNames: Record<string, string> = { evenOdd: 'Even / Odd · Regular', overUnder: 'Over 6 / Under 3 · Regular', matches: 'Matches · V.I.P.' };
   const filters = [['all','All clients'],['evenOdd','Even / Odd'],['overUnder','Over / Under'],['matches','Matches · V.I.P.']] as const;
-  const visibleOrders = selectedPackage === 'all' ? orders : orders.filter(order => order.package === selectedPackage);
+  const activeOrders = orders.filter(order => !order.deleted_at);
+  const visibleOrders = selectedPackage === 'all' ? activeOrders : activeOrders.filter(order => order.package === selectedPackage);
   const receipt = (order: Order): ReceiptDetails => ({ id: String(order.id), name: order.customer_name, email: order.customer_email, country: order.customer_country, rot: order.rot_number || order.account_id, package: planNames[order.package] || order.package, amount: order.amount, currency: order.currency, reference: order.reference, created: order.created });
   return <section className="admin-setting-panel payment-records"><div className="section-heading"><div><p className="landing-kicker">Client records</p><h2>Clients</h2></div><button type="button" className="landing-secondary" onClick={() => void load()} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button></div>
     <p className="admin-panel-note">Verify each TRC20 transaction hash before approving. Approval grants that package for the lifetime of the BrandyFx service. Matches V.I.P. includes all three signal tabs. Device reset signs the account out and lets its next sign-in bind a new device.</p>
-    <div className="client-package-filters" role="group" aria-label="Filter clients by package">{filters.map(([key,label]) => <button key={key} type="button" aria-pressed={selectedPackage === key} onClick={() => setSelectedPackage(key)}>{label}<small>{key === 'all' ? orders.length : orders.filter(order => order.package === key).length}</small></button>)}</div>
+    <div className="client-package-filters" role="group" aria-label="Filter clients by package">{filters.map(([key,label]) => <button key={key} type="button" aria-pressed={selectedPackage === key} onClick={() => setSelectedPackage(key)}>{label}<small>{key === 'all' ? activeOrders.length : activeOrders.filter(order => order.package === key).length}</small></button>)}</div>
     {loadError && <p className="admin-message error" role="alert">{loadError}</p>}
-    {!loadError && !orders.length && <p>No payment records yet.</p>}
+    {!loadError && !activeOrders.length && <p>No client records.</p>}
     {!!visibleOrders.length && <div className="payment-table-scroll"><table className="payment-table"><thead><tr><th>Client</th><th>Deriv / ROT</th><th>Package</th><th>Paid</th><th>Transaction hash</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>{visibleOrders.map(order => <tr key={order.id}><td data-label="Client"><strong>{order.customer_name || 'Name not provided'}</strong><small>{order.customer_email || 'Email not provided'}</small><small>{order.customer_country}</small><small>{dateLabel(order.created)}</small></td>
         <td data-label="Deriv / ROT">{order.rot_number || order.account_id}<small>{order.device_locked ? 'Device locked' : 'No device lock'}</small></td><td data-label="Package">{planNames[order.package] || order.package}<small>One-time · lifetime</small></td><td data-label="Paid">{order.currency} {Number(order.amount).toFixed(2)}</td>
@@ -283,7 +284,7 @@ function PaymentRecords({ run }: { run: (path: string, data?: object) => Promise
           {!order.deleted_at && <button type="button" className="landing-secondary" onClick={async () => { if (window.confirm(`Remove ${order.customer_name || order.account_id}'s record and revoke access?`)) { if (await run('admin/payment', { paymentId: order.id, action: 'delete' })) void load(); } }}>Delete record</button>}
           {order.deleted_at && <small>Access revoked</small>}</div></td>
       </tr>)}</tbody></table></div>}
-    {!loadError && orders.length > 0 && !visibleOrders.length && <p>No records for this package.</p>}
+    {!loadError && activeOrders.length > 0 && !visibleOrders.length && <p>No records for this package.</p>}
   </section>;
 }
 
