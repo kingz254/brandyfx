@@ -530,7 +530,7 @@ function App() {
     {settings.backgroundUrl.match(/\.(mp4|webm)(\?|$)/i) ? <video className="backdrop-video" autoPlay muted loop playsInline preload="metadata" poster="/media/brandyfx-background-poster.jpg"><source src={settings.backgroundUrl} /></video> : <img className="backdrop-image" src={settings.backgroundUrl} alt="" />}
   </div><div className="backdrop-shade" aria-hidden="true" />
   {!settingsReady && !preview && <div className="brand-loader" role="status" aria-label="Loading BrandyFx"><img src="/brand/brandyfx-app-icon.png" alt=""/><span>BrandyFx</span></div>}
-  {publicLegal ? <>{page}</> : privateHome ? page : <>{showingDesk || member.account || member.admin ? <header className={`top${member.admin ? ' top-admin' : ''}`}><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
+  {publicLegal ? <>{page}</> : privateHome ? page : <>{showingDesk || member.account || member.admin ? <header className={`top${member.admin ? ' top-admin' : ''}${member.account && !member.admin ? ' top-member' : ''}`}><a className="wordmark" href="/?home"><Mark />BrandyFx</a>
     <nav aria-label="Main navigation">
       {preview && <a className="quiet" href="/">Exit preview</a>}
       {member.admin && <><button className="quiet" aria-pressed={tab === 'desk'} onClick={() => setTab('desk')}>Desk</button>
